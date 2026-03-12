@@ -6,6 +6,26 @@ Do not edit unless you understand what it does.
 function what {
     param([string] $Topic)
 
+    function Write-HelpTable {
+        param([Parameter(Mandatory = $true)][hashtable] $HelpMap)
+
+        $rows = foreach ($k in @($HelpMap.Keys | Sort-Object)) {
+            [pscustomobject]@{
+                Command     = $k
+                Description = $HelpMap[$k].short
+            }
+        }
+
+        $cmdW = [Math]::Max(7, (($rows | ForEach-Object { $_.Command.Length } | Measure-Object -Maximum).Maximum))
+        $descW = [Math]::Max(11, (($rows | ForEach-Object { $_.Description.Length } | Measure-Object -Maximum).Maximum))
+
+        Write-Host (('{0}  {1}' -f 'Command'.PadRight($cmdW), 'Description'))
+        Write-Host (('{0}  {1}' -f ('-' * $cmdW), ('-' * $descW)))
+        foreach ($r in $rows) {
+            Write-Host (('{0}  {1}' -f $r.Command.PadRight($cmdW), $r.Description))
+        }
+    }
+
     $help = @{
         lx     = @{
             short = 'compact directory listing (interactive)'
@@ -63,11 +83,7 @@ function what {
     }
 
     if (-not $Topic) {
-        Write-Host 'NexShell commands:' -ForegroundColor Cyan
-        foreach ($k in @($help.Keys | Sort-Object)) {
-            $desc = $help[$k].short
-            Write-Host ("- {0}  {1}" -f $k, $desc)
-        }
+        Write-HelpTable -HelpMap $help
         return
     }
 
@@ -96,8 +112,8 @@ function what {
     }
 
     if (-not $help.ContainsKey($key)) {
-        Write-Host ("No NexShell help for: {0}" -f $t[0]) -ForegroundColor Yellow
-        Write-Host "Run 'what' to see available NexShell commands." -ForegroundColor Yellow
+        Write-Host ("No NexShell help for: {0}" -f $t[0])
+        Write-Host "Run 'what' to see available NexShell commands."
         return
     }
 

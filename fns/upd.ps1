@@ -146,7 +146,7 @@ function upd {
         Write-Error -Message $_.Exception.Message -ErrorAction Continue
         $msg = $_.Exception.Message
         if ($msg -match 'connect to the remote server|network|TLS|certificate') {
-            Write-Host 'Hint: this needs internet access to GitHub (and may require TLS 1.2 / proxy settings on older systems).' -ForegroundColor Yellow
+            Write-Host 'Hint: this needs internet access to GitHub (and may require TLS 1.2 / proxy settings on older systems).'
         }
     }
     finally {

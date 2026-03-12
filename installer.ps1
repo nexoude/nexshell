@@ -12,8 +12,7 @@ $ErrorActionPreference = 'Stop'
 function Write-Header {
     param([Parameter(Mandatory = $true)][string] $Text)
     Write-Host ''
-    Write-Host $Text -ForegroundColor Cyan
-    Write-Host ('=' * $Text.Length) -ForegroundColor Cyan
+    Write-Host ("==> {0}" -f $Text)
 }
 
 function Read-YesNo {
@@ -27,7 +26,7 @@ function Read-YesNo {
         if ($a -eq 'y' -or $a -eq 'yes') { return $true }
         if ($a -eq 'n' -or $a -eq 'no') { return $false }
 
-        Write-Host "Please enter 'y' or 'n' (or 'yes'/'no')." -ForegroundColor Yellow
+        Write-Host "Please enter 'y' or 'n' (or 'yes'/'no')."
     }
 }
 
@@ -155,7 +154,7 @@ function Ensure-ScoopInstalled {
         Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned -Force | Out-Null
     }
     catch {
-        Write-Host "Couldn't set ExecutionPolicy for CurrentUser: $($_.Exception.Message)" -ForegroundColor Yellow
+        Write-Host "Couldn't set ExecutionPolicy for CurrentUser: $($_.Exception.Message)"
     }
 
     $scriptText = $null
@@ -207,8 +206,8 @@ function Ensure-GitInstalled {
     if (Get-Command -Name 'git' -ErrorAction SilentlyContinue) { return }
 
     Write-Header 'Git is missing'
-    Write-Host "Git isn't installed. You're fucking stupid. You should install Git first." -ForegroundColor Yellow
-    Write-Host 'Trying to install Git using Scoop anyway...' -ForegroundColor Yellow
+    Write-Host "Git isn't installed. You're fucking stupid. You should install Git first."
+    Write-Host 'Trying to install Git using Scoop anyway...'
 
     try {
         Ensure-ScoopInstalled
@@ -448,10 +447,10 @@ function Install-NexShellTo {
 try { Clear-Host } catch { }
 
 Write-Header 'NexShell Installer'
-Write-Host '1) It will delete any previous data in your profile, NO MATTER WHAT.' -ForegroundColor Red
-Write-Host '2) If something breaks completely at some point, try reinstalling everything with this script.' -ForegroundColor Yellow
+Write-Host '1) It will delete any previous data in your profile, NO MATTER WHAT.'
+Write-Host '2) If something breaks completely at some point, try reinstalling everything with this script.'
 Write-Host ''
-Write-Host 'Press Enter to continue, or Ctrl+C to cancel.' -ForegroundColor Gray
+Write-Host 'Press Enter to continue, or Ctrl+C to cancel.'
 [void](Read-Host)
 
 $autoUpdate = Read-YesNo -Prompt "Would you like to enable auto update? Please note this adds overhead for PowerShell loading as it will have to check for updates before letting you use it. This will not prompt you upon finding an update and find it automatically. Saying no will let you update and check for updates via 'upd' and 'chkupd'. (y/n)"
@@ -519,7 +518,7 @@ if ($needPackage) {
     }
     catch {
         Write-Error -Message $_.Exception.Message -ErrorAction Continue
-        Write-Host 'Hint: this needs internet access to GitHub (and may require TLS 1.2 / proxy settings on older systems).' -ForegroundColor Yellow
+        Write-Host 'Hint: this needs internet access to GitHub (and may require TLS 1.2 / proxy settings on older systems).'
         throw
     }
 }
@@ -545,11 +544,11 @@ finally {
 }
 
 Write-Header 'Done'
-Write-Host 'Restart PowerShell to pick up the new profile.' -ForegroundColor Green
+Write-Host 'Restart PowerShell to pick up the new profile.'
 if ($autoUpdate) {
-    Write-Host 'Auto update is enabled.' -ForegroundColor Green
+    Write-Host 'Auto update is enabled.'
 }
 else {
-    Write-Host "Auto update is disabled. Use 'chkupd' and 'upd' when you want." -ForegroundColor Gray
+    Write-Host "Auto update is disabled. Use 'chkupd' and 'upd' when you want."
 }
 

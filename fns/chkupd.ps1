@@ -9,6 +9,23 @@ function chkupd {
 
     $ErrorActionPreference = 'Stop'
 
+    function Write-InfoTable {
+        param(
+            [Parameter(Mandatory = $true)][hashtable] $Rows
+        )
+
+        $keys = @($Rows.Keys)
+        if (-not $keys -or $keys.Count -eq 0) { return }
+
+        $maxKey = ($keys | Measure-Object -Property Length -Maximum).Maximum
+        foreach ($k in @($keys | Sort-Object)) {
+            $v = $Rows[$k]
+            if ($null -eq $v) { $v = '' }
+            $label = ([string]$k).PadRight($maxKey)
+            Write-Host ("{0}  {1}" -f $label, $v)
+        }
+    }
+
     function Get-InstallRoot {
         $dir = $null
         try { $dir = $PSScriptRoot } catch { $dir = $null }
@@ -76,22 +93,34 @@ function chkupd {
         if ($local) { $local = $local.Trim() }
 
         if (-not $local) {
-            Write-Host ("Installed version: unknown. Latest: {0}" -f $latest.Substring(0, 12)) -ForegroundColor Yellow
+            Write-InfoTable -Rows @{
+                Installed = 'unknown'
+                Latest    = $latest.Substring(0, 12)
+                Status    = 'unknown (no local .nexshell.sha)'
+            }
             return
         }
 
         if ($local -eq $latest) {
-            Write-Host 'Up to date.' -ForegroundColor Green
+            Write-InfoTable -Rows @{
+                Installed = $local.Substring(0, 12)
+                Latest    = $latest.Substring(0, 12)
+                Status    = 'up to date'
+            }
         }
         else {
-            Write-Host ("Update available: {0} -> {1}" -f $local.Substring(0, 12), $latest.Substring(0, 12)) -ForegroundColor Yellow
+            Write-InfoTable -Rows @{
+                Installed = $local.Substring(0, 12)
+                Latest    = $latest.Substring(0, 12)
+                Status    = 'update available'
+            }
         }
     }
     catch {
         Write-Error -Message $_.Exception.Message -ErrorAction Continue
         $msg = $_.Exception.Message
         if ($msg -match 'connect to the remote server|network|TLS|certificate') {
-            Write-Host 'Hint: this needs internet access to GitHub (and may require TLS 1.2 / proxy settings on older systems).' -ForegroundColor Yellow
+            Write-Host 'Hint: this needs internet access to GitHub (and may require TLS 1.2 / proxy settings on older systems).'
         }
     }
 }
