@@ -25,6 +25,8 @@ function Get-ProfileScriptRoot {
 
 $profileRoot = Get-ProfileScriptRoot
 $fnsDir = Join-Path $profileRoot 'fns'
+$configPath = Join-Path $profileRoot 'config.toml'
+$repoPath = Join-Path $profileRoot '.nexshell_repo'
 
 # Load every `*.ps1` from `fns\` (if it exists).
 if (Test-Path -Path $fnsDir) {
@@ -44,5 +46,70 @@ if (Test-Path -Path $fnsDir) {
     Remove-Variable fnsScripts, fnsScript -ErrorAction SilentlyContinue
 }
 
-Remove-Variable profileRoot, fnsDir -ErrorAction SilentlyContinue
+function Get-AutoUpdate {
+    param([Parameter(Mandatory = $true)][string] $Path)
 
+    $defaultValue = $true
+
+    try {
+        if (-not (Test-Path -Path $Path)) {
+            "auto_update = true`r`n" | Set-Content -Path $Path -Encoding UTF8 -Force
+            return $defaultValue
+        }
+    }
+    catch {
+        return $defaultValue
+    }
+
+    try {
+        $lines = Get-Content -Path $Path -ErrorAction Stop
+    }
+    catch {
+        return $defaultValue
+    }
+
+    foreach ($line in @($lines)) {
+        if ($null -eq $line) { continue }
+        $m = [Regex]::Match(
+            $line,
+            '^\s*auto_update\s*=\s*(true|false)\s*(#.*)?$',
+            [System.Text.RegularExpressions.RegexOptions]::IgnoreCase
+        )
+        if ($m.Success) {
+            return ($m.Groups[1].Value.ToLower() -eq 'true')
+        }
+    }
+
+    return $defaultValue
+}
+
+$autoUpdate = Get-AutoUpdate -Path $configPath
+if ($autoUpdate) {
+    # Avoid noisy errors on startup when updates aren't configured yet.
+    $hasRepo = $false
+    try {
+        if ($env:NEXSHELL_REPO) { $hasRepo = $true }
+        elseif (Test-Path -Path $repoPath) { $hasRepo = $true }
+    }
+    catch {
+        $hasRepo = $false
+    }
+
+    if ($hasRepo) {
+        try {
+            if (Get-Command -Name 'upd' -ErrorAction SilentlyContinue) {
+                upd
+            }
+        }
+        catch {
+            # Do not block shell startup on updater errors.
+            Write-Warning ("Auto-update failed: {0}" -f $_.Exception.Message)
+        }
+    }
+
+    Remove-Variable hasRepo -ErrorAction SilentlyContinue
+}
+
+Remove-Variable autoUpdate -ErrorAction SilentlyContinue
+Remove-Item -Path Function:Get-AutoUpdate -ErrorAction SilentlyContinue
+Remove-Variable profileRoot, fnsDir, configPath, repoPath -ErrorAction SilentlyContinue
