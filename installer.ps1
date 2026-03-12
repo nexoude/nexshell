@@ -170,7 +170,7 @@ function Download-NexShellPackage {
 
 function Install-NexShellTo {
     param(
-        [Parameter(Mandatory = $true)][string] $PackageRoot,
+        [string] $PackageRoot,
         [Parameter(Mandatory = $true)][string] $TargetDir,
         [Parameter(Mandatory = $true)][bool] $AutoUpdate,
         [Parameter(Mandatory = $true)][string] $Repo,
@@ -191,31 +191,62 @@ function Install-NexShellTo {
         (Join-Path $TargetDir '.nexshell.sha')
     )
 
-    foreach ($p in $pathsToRemove) {
+    $isGitRepo = Test-Path -Path (Join-Path $TargetDir '.git')
+    $git = Get-Command -Name 'git' -ErrorAction SilentlyContinue
+
+    if ($isGitRepo -and $git) {
+        # If the profile folder is a git checkout, prefer a git "full reinstall":
+        # it preserves expected line endings and avoids leaving the repo dirty.
         try {
-            if (Test-Path -Path $p) {
-                try {
-                    Remove-Item -Path $p -Recurse -Force
-                }
-                catch {
-                    if ($p -like '*installer.ps1') { continue }
-                    throw
-                }
+            $origin = & $git.Source -C $TargetDir remote get-url origin 2>$null
+            $originStr = if ($origin) { ($origin | Select-Object -First 1).Trim() } else { '' }
+
+            if ($originStr -match [Regex]::Escape($Repo)) {
+                & $git.Source -C $TargetDir fetch --prune origin main 2>$null | Out-Null
+                & $git.Source -C $TargetDir reset --hard origin/main 2>$null | Out-Null
+
+                $Sha = $null
+                try { $Sha = (& $git.Source -C $TargetDir rev-parse HEAD 2>$null | Select-Object -First 1).Trim() } catch { $Sha = $null }
+            }
+            else {
+                # Origin doesn't match; fall back to file-based install.
+                $isGitRepo = $false
             }
         }
         catch {
-            throw ("Failed removing '{0}': {1}" -f $p, $_.Exception.Message)
+            $isGitRepo = $false
         }
     }
 
-    try {
-        Copy-Item -Path (Join-Path $PackageRoot 'Microsoft.PowerShell_profile.ps1') -Destination (Join-Path $TargetDir 'Microsoft.PowerShell_profile.ps1') -Force
-        Copy-Item -Path (Join-Path $PackageRoot 'main.ps1') -Destination (Join-Path $TargetDir 'main.ps1') -Force
-        Copy-Item -Path (Join-Path $PackageRoot 'installer.ps1') -Destination (Join-Path $TargetDir 'installer.ps1') -Force
-        Copy-Item -Path (Join-Path $PackageRoot 'fns') -Destination (Join-Path $TargetDir 'fns') -Recurse -Force
-    }
-    catch {
-        throw ("Copy failed: {0}" -f $_.Exception.Message)
+    if (-not $isGitRepo) {
+        foreach ($p in $pathsToRemove) {
+            try {
+                if (Test-Path -Path $p) {
+                    try {
+                        Remove-Item -Path $p -Recurse -Force
+                    }
+                    catch {
+                        if ($p -like '*installer.ps1') { continue }
+                        throw
+                    }
+                }
+            }
+            catch {
+                throw ("Failed removing '{0}': {1}" -f $p, $_.Exception.Message)
+            }
+        }
+
+        if (-not $PackageRoot) { throw 'Internal error: PackageRoot is required for non-git install.' }
+
+        try {
+            Copy-Item -Path (Join-Path $PackageRoot 'Microsoft.PowerShell_profile.ps1') -Destination (Join-Path $TargetDir 'Microsoft.PowerShell_profile.ps1') -Force
+            Copy-Item -Path (Join-Path $PackageRoot 'main.ps1') -Destination (Join-Path $TargetDir 'main.ps1') -Force
+            Copy-Item -Path (Join-Path $PackageRoot 'installer.ps1') -Destination (Join-Path $TargetDir 'installer.ps1') -Force
+            Copy-Item -Path (Join-Path $PackageRoot 'fns') -Destination (Join-Path $TargetDir 'fns') -Recurse -Force
+        }
+        catch {
+            throw ("Copy failed: {0}" -f $_.Exception.Message)
+        }
     }
 
     $cfg = if ($AutoUpdate) { 'true' } else { 'false' }
@@ -270,20 +301,6 @@ $repoOverride = Read-Host ("GitHub repo to install from [{0}]" -f $repo)
 if ($repoOverride) { $repo = $repoOverride.Trim() }
 if (-not $repo) { throw 'Repo cannot be empty.' }
 
-Write-Header 'Downloading'
-$pkg = $null
-try {
-    $pkg = Download-NexShellPackage -Repo $repo
-}
-catch {
-    Write-Error -Message $_.Exception.Message -ErrorAction Continue
-    Write-Host 'Hint: this needs internet access to GitHub (and may require TLS 1.2 / proxy settings on older systems).' -ForegroundColor Yellow
-    throw
-}
-
-$sha = $null
-try { $sha = Get-LatestSha -Repo $repo } catch { $sha = $null }
-
 $documents = Get-DocumentsPath
 if (-not $documents) { throw 'Unable to locate your Documents folder.' }
 
@@ -292,11 +309,34 @@ $targets = @(
     (Join-Path $documents 'WindowsPowerShell')
 )
 
+Write-Header 'Preparing'
+$needPackage = $false
+foreach ($t in $targets) {
+    if (-not (Test-Path -Path (Join-Path $t '.git'))) { $needPackage = $true }
+}
+
+$pkg = $null
+if ($needPackage) {
+    Write-Header 'Downloading'
+    try {
+        $pkg = Download-NexShellPackage -Repo $repo
+    }
+    catch {
+        Write-Error -Message $_.Exception.Message -ErrorAction Continue
+        Write-Host 'Hint: this needs internet access to GitHub (and may require TLS 1.2 / proxy settings on older systems).' -ForegroundColor Yellow
+        throw
+    }
+}
+
+$sha = $null
+try { $sha = Get-LatestSha -Repo $repo } catch { $sha = $null }
+
 Write-Header 'Installing'
 try {
     foreach ($t in $targets) {
         Write-Host ("- {0}" -f $t)
-        Install-NexShellTo -PackageRoot $pkg.PackageDir -TargetDir $t -AutoUpdate $autoUpdate -Repo $repo -Sha $sha
+        $pkgRoot = if ($pkg) { $pkg.PackageDir } else { $null }
+        Install-NexShellTo -PackageRoot $pkgRoot -TargetDir $t -AutoUpdate $autoUpdate -Repo $repo -Sha $sha
     }
 }
 finally {
