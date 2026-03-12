@@ -1,5 +1,8 @@
-# `lx` - lightweight, columnar directory listing.
-# (Function body copied verbatim per request.)
+<#
+`lx` is a cleaner, faster alternative to `ls`.
+Note that it uses Write-Host and not Write-Output,
+so it won't work in pipelines. It's meant for interactive use only.
+#>
 function lx {
     param([string]$Path = '.')
 
