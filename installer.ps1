@@ -65,6 +65,180 @@ function Try-GetGitHubRepoFromOrigin {
     return $null
 }
 
+function Add-ToPathIfMissing {
+    param([Parameter(Mandatory = $true)][string] $Dir)
+
+    if (-not $Dir) { return }
+    if (-not (Test-Path -Path $Dir)) { return }
+
+    $p = $env:PATH
+    if (-not $p) { $env:PATH = $Dir; return }
+
+    foreach ($seg in @($p -split ';')) {
+        if ($seg -and ($seg.Trim().TrimEnd('\') -ieq $Dir.Trim().TrimEnd('\'))) {
+            return
+        }
+    }
+
+    $env:PATH = ($Dir + ';' + $p)
+}
+
+function Ensure-Tls12 {
+    try { [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12 } catch { }
+}
+
+function Try-GetOriginUrlFromGitConfig {
+    param([Parameter(Mandatory = $true)][string] $TargetDir)
+
+    $cfg = Join-Path $TargetDir '.git\config'
+    if (-not (Test-Path -Path $cfg)) { return $null }
+
+    try {
+        $lines = Get-Content -Path $cfg -ErrorAction Stop
+    }
+    catch {
+        return $null
+    }
+
+    $inOrigin = $false
+    foreach ($line in $lines) {
+        if ($null -eq $line) { continue }
+        $l = [string] $line
+
+        if ($l -match '^\s*\[remote\s+"origin"\]\s*$') { $inOrigin = $true; continue }
+        if ($l -match '^\s*\[') { $inOrigin = $false; continue }
+
+        if ($inOrigin -and $l -match '^\s*url\s*=\s*(?<u>.+?)\s*$') {
+            $u = $Matches['u']
+            if ($u) { return $u.Trim() }
+            return $null
+        }
+    }
+
+    return $null
+}
+
+function Test-OriginUrlMatchesRepo {
+    param(
+        [Parameter(Mandatory = $true)][string] $OriginUrl,
+        [Parameter(Mandatory = $true)][string] $Repo
+    )
+
+    if (-not $OriginUrl) { return $false }
+    if (-not $Repo) { return $false }
+
+    $pattern = "([/:]){0}(?:\.git)?/?$" -f [Regex]::Escape($Repo.Trim())
+    return [Regex]::IsMatch($OriginUrl.Trim(), $pattern, [Text.RegularExpressions.RegexOptions]::IgnoreCase)
+}
+
+function Get-ScoopCommandPath {
+    $cmd = Get-Command -Name 'scoop' -ErrorAction SilentlyContinue
+    if ($cmd -and $cmd.Source) { return $cmd.Source }
+
+    if (-not $env:USERPROFILE) { return $null }
+    $shims = Join-Path $env:USERPROFILE 'scoop\shims'
+    foreach ($c in @('scoop.cmd', 'scoop.ps1', 'scoop.exe')) {
+        $p = Join-Path $shims $c
+        if (Test-Path -Path $p) { return $p }
+    }
+
+    return $null
+}
+
+function Ensure-ScoopInstalled {
+    if (Get-ScoopCommandPath) { return }
+
+    Write-Header 'Installing Scoop'
+    Ensure-Tls12
+
+    try {
+        Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned -Force | Out-Null
+    }
+    catch {
+        Write-Host "Couldn't set ExecutionPolicy for CurrentUser: $($_.Exception.Message)" -ForegroundColor Yellow
+    }
+
+    $scriptText = $null
+    try {
+        if (Get-Command -Name Invoke-RestMethod -ErrorAction SilentlyContinue) {
+            $scriptText = Invoke-RestMethod -Uri 'https://get.scoop.sh' -ErrorAction Stop
+        }
+    }
+    catch { $scriptText = $null }
+
+    if (-not $scriptText) {
+        try {
+            if (Get-Command -Name Invoke-WebRequest -ErrorAction SilentlyContinue) {
+                $r = Invoke-WebRequest -Uri 'https://get.scoop.sh' -UseBasicParsing -ErrorAction Stop
+                $scriptText = $r.Content
+            }
+        }
+        catch { $scriptText = $null }
+    }
+
+    if (-not $scriptText) {
+        try {
+            $wc = New-Object Net.WebClient
+            $scriptText = $wc.DownloadString('https://get.scoop.sh')
+        }
+        catch { $scriptText = $null }
+    }
+
+    if (-not $scriptText) {
+        throw "Couldn't download Scoop installer (no internet / TLS / proxy issue)."
+    }
+
+    try {
+        Invoke-Expression $scriptText
+    }
+    catch {
+        throw ("Scoop install failed: {0}" -f $_.Exception.Message)
+    }
+
+    if (-not $env:USERPROFILE) { return }
+    Add-ToPathIfMissing -Dir (Join-Path $env:USERPROFILE 'scoop\shims')
+
+    if (-not (Get-ScoopCommandPath)) {
+        throw "Scoop install ran, but the 'scoop' command still isn't available. You're fucking stupid. Fix Scoop, then rerun this installer."
+    }
+}
+
+function Ensure-GitInstalled {
+    if (Get-Command -Name 'git' -ErrorAction SilentlyContinue) { return }
+
+    Write-Header 'Git is missing'
+    Write-Host "Git isn't installed. You're fucking stupid. You should install Git first." -ForegroundColor Yellow
+    Write-Host 'Trying to install Git using Scoop anyway...' -ForegroundColor Yellow
+
+    try {
+        Ensure-ScoopInstalled
+    }
+    catch {
+        throw ("Git isn't installed and Scoop couldn't be installed. {0}`nYou're fucking stupid. Install Git first, then rerun this installer." -f $_.Exception.Message)
+    }
+
+    $scoop = Get-ScoopCommandPath
+    if (-not $scoop) {
+        throw "Scoop seems installed but the 'scoop' command isn't available. You're fucking stupid. Fix Scoop/Git and rerun."
+    }
+
+    try {
+        & $scoop install git | Out-Null
+        if ($LASTEXITCODE -ne 0) { throw ("scoop install git failed (exit code {0})." -f $LASTEXITCODE) }
+    }
+    catch {
+        throw ("Failed to install Git via Scoop: {0}`nYou're fucking stupid. Install Git manually and rerun." -f $_.Exception.Message)
+    }
+
+    if ($env:USERPROFILE) {
+        Add-ToPathIfMissing -Dir (Join-Path $env:USERPROFILE 'scoop\shims')
+    }
+
+    if (-not (Get-Command -Name 'git' -ErrorAction SilentlyContinue)) {
+        throw "Git still isn't available after install. You're fucking stupid. Restart PowerShell and rerun the installer."
+    }
+}
+
 function Expand-ZipTo {
     param(
         [Parameter(Mandatory = $true)][string] $ZipPath,
@@ -133,7 +307,7 @@ function Download-NexShellPackage {
         throw 'This installer requires PowerShell 3+ (Invoke-WebRequest).'
     }
 
-    try { [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12 } catch { }
+    Ensure-Tls12
 
     $tmp = Join-Path ([IO.Path]::GetTempPath()) ('NexShell-Package-' + [Guid]::NewGuid().ToString('N'))
     $zip = Join-Path $tmp 'repo.zip'
@@ -194,31 +368,30 @@ function Install-NexShellTo {
     $isGitRepo = Test-Path -Path (Join-Path $TargetDir '.git')
     $git = Get-Command -Name 'git' -ErrorAction SilentlyContinue
 
+    $usedGitInstall = $false
     if ($isGitRepo -and $git) {
         # If the profile folder is a git checkout, prefer a git "full reinstall":
         # it preserves expected line endings and avoids leaving the repo dirty.
-        try {
-            $origin = & $git.Source -C $TargetDir remote get-url origin 2>$null
-            $originStr = if ($origin) { ($origin | Select-Object -First 1).Trim() } else { '' }
-
-            if ($originStr -match [Regex]::Escape($Repo)) {
-                & $git.Source -C $TargetDir fetch --prune origin main 2>$null | Out-Null
-                & $git.Source -C $TargetDir reset --hard origin/main 2>$null | Out-Null
-
-                $Sha = $null
-                try { $Sha = (& $git.Source -C $TargetDir rev-parse HEAD 2>$null | Select-Object -First 1).Trim() } catch { $Sha = $null }
-            }
-            else {
-                # Origin doesn't match; fall back to file-based install.
-                $isGitRepo = $false
-            }
+        $origin = & $git.Source -C $TargetDir remote get-url origin 2>$null
+        if ($LASTEXITCODE -ne 0) {
+            throw "This looks like a git checkout, but 'git remote get-url origin' failed. You're fucking stupid. Fix git/your repo and rerun."
         }
-        catch {
-            $isGitRepo = $false
+        $originStr = if ($origin) { ($origin | Select-Object -First 1).Trim() } else { '' }
+
+        if ($originStr -match [Regex]::Escape($Repo)) {
+            & $git.Source -C $TargetDir fetch --prune origin main 2>$null | Out-Null
+            if ($LASTEXITCODE -ne 0) { throw "git fetch failed. Check internet/auth and rerun." }
+
+            & $git.Source -C $TargetDir reset --hard origin/main 2>$null | Out-Null
+            if ($LASTEXITCODE -ne 0) { throw "git reset failed. Check your repo and rerun." }
+
+            $usedGitInstall = $true
+            $Sha = $null
+            try { $Sha = (& $git.Source -C $TargetDir rev-parse HEAD 2>$null | Select-Object -First 1).Trim() } catch { $Sha = $null }
         }
     }
 
-    if (-not $isGitRepo) {
+    if (-not $usedGitInstall) {
         foreach ($p in $pathsToRemove) {
             try {
                 if (Test-Path -Path $p) {
@@ -311,8 +484,31 @@ $targets = @(
 
 Write-Header 'Preparing'
 $needPackage = $false
+$needGit = $false
 foreach ($t in $targets) {
-    if (-not (Test-Path -Path (Join-Path $t '.git'))) { $needPackage = $true }
+    $gitDir = Join-Path $t '.git'
+    if (Test-Path -Path $gitDir) {
+        $originUrl = Try-GetOriginUrlFromGitConfig -TargetDir $t
+        if ($originUrl -and (Test-OriginUrlMatchesRepo -OriginUrl $originUrl -Repo $repo)) {
+            $needGit = $true
+        }
+        else {
+            $needPackage = $true
+        }
+    }
+    else {
+        $needPackage = $true
+    }
+}
+
+if ($needGit) {
+    try {
+        Ensure-GitInstalled
+    }
+    catch {
+        Write-Error -Message $_.Exception.Message -ErrorAction Continue
+        throw
+    }
 }
 
 $pkg = $null
