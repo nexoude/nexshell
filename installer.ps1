@@ -66,7 +66,7 @@ function Try-GetGitHubRepoFromOrigin {
 
 function Install-NexShellTo {
     param(
-        [Parameter(Mandatory = $true)][string] $SourceRoot,
+        [Parameter(Mandatory = $true)][string] $PackageRoot,
         [Parameter(Mandatory = $true)][string] $TargetDir,
         [Parameter(Mandatory = $true)][bool] $AutoUpdate,
         [string] $Repo
@@ -89,7 +89,17 @@ function Install-NexShellTo {
 
     foreach ($p in $pathsToRemove) {
         try {
-            if (Test-Path -Path $p) { Remove-Item -Path $p -Recurse -Force }
+            if (Test-Path -Path $p) {
+                try {
+                    Remove-Item -Path $p -Recurse -Force
+                }
+                catch {
+                    # When reinstalling "in place", the running installer may be locked.
+                    # Still continue; we'll overwrite on copy.
+                    if ($p -like '*installer.ps1') { continue }
+                    throw
+                }
+            }
         }
         catch {
             throw ("Failed removing '{0}': {1}" -f $p, $_.Exception.Message)
@@ -97,10 +107,10 @@ function Install-NexShellTo {
     }
 
     try {
-        Copy-Item -Path (Join-Path $SourceRoot 'Microsoft.PowerShell_profile.ps1') -Destination (Join-Path $TargetDir 'Microsoft.PowerShell_profile.ps1') -Force
-        Copy-Item -Path (Join-Path $SourceRoot 'main.ps1') -Destination (Join-Path $TargetDir 'main.ps1') -Force
-        Copy-Item -Path (Join-Path $SourceRoot 'installer.ps1') -Destination (Join-Path $TargetDir 'installer.ps1') -Force
-        Copy-Item -Path (Join-Path $SourceRoot 'fns') -Destination (Join-Path $TargetDir 'fns') -Recurse -Force
+        Copy-Item -Path (Join-Path $PackageRoot 'Microsoft.PowerShell_profile.ps1') -Destination (Join-Path $TargetDir 'Microsoft.PowerShell_profile.ps1') -Force
+        Copy-Item -Path (Join-Path $PackageRoot 'main.ps1') -Destination (Join-Path $TargetDir 'main.ps1') -Force
+        Copy-Item -Path (Join-Path $PackageRoot 'installer.ps1') -Destination (Join-Path $TargetDir 'installer.ps1') -Force
+        Copy-Item -Path (Join-Path $PackageRoot 'fns') -Destination (Join-Path $TargetDir 'fns') -Recurse -Force
     }
     catch {
         throw ("Copy failed: {0}" -f $_.Exception.Message)
@@ -167,10 +177,32 @@ $targets = @(
     (Join-Path $documents 'WindowsPowerShell')
 )
 
+Write-Header 'Staging'
+$stageRoot = Join-Path ([IO.Path]::GetTempPath()) ('NexShell-Install-' + [Guid]::NewGuid().ToString('N'))
+try {
+    New-Item -ItemType Directory -Path $stageRoot -Force | Out-Null
+
+    Copy-Item -Path (Join-Path $sourceRoot 'Microsoft.PowerShell_profile.ps1') -Destination (Join-Path $stageRoot 'Microsoft.PowerShell_profile.ps1') -Force
+    Copy-Item -Path (Join-Path $sourceRoot 'main.ps1') -Destination (Join-Path $stageRoot 'main.ps1') -Force
+    Copy-Item -Path (Join-Path $sourceRoot 'installer.ps1') -Destination (Join-Path $stageRoot 'installer.ps1') -Force
+    Copy-Item -Path (Join-Path $sourceRoot 'fns') -Destination (Join-Path $stageRoot 'fns') -Recurse -Force
+}
+catch {
+    throw ("Unable to stage install files: {0}" -f $_.Exception.Message)
+}
+
 Write-Header 'Installing'
-foreach ($t in $targets) {
-    Write-Host ("- {0}" -f $t)
-    Install-NexShellTo -SourceRoot $sourceRoot -TargetDir $t -AutoUpdate $autoUpdate -Repo $repo
+try {
+    foreach ($t in $targets) {
+        Write-Host ("- {0}" -f $t)
+        Install-NexShellTo -PackageRoot $stageRoot -TargetDir $t -AutoUpdate $autoUpdate -Repo $repo
+    }
+}
+finally {
+    try {
+        if (Test-Path -Path $stageRoot) { Remove-Item -Path $stageRoot -Recurse -Force }
+    }
+    catch { }
 }
 
 Write-Header 'Done'
