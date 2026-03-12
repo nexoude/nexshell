@@ -1,1 +1,1 @@
-Hey! Heavy w.i.p. here so uhhh basically run this to isntall: irm blahblahnlah | iex
+Install: `irm https://raw.githubusercontent.com/nexoude/nexshell/refs/heads/main/installer.ps1 | iex`

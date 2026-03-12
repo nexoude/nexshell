@@ -41,6 +41,21 @@ function Get-DocumentsPath {
     return $null
 }
 
+function Get-ProfilePathForThisHost {
+    # $PROFILE is usually the CurrentUserCurrentHost path, but it can also be a PSObject with properties.
+    try {
+        if ($PROFILE -is [string]) {
+            if ($PROFILE) { return [string] $PROFILE }
+        }
+        elseif ($PROFILE -and $PROFILE.CurrentUserCurrentHost) {
+            return [string] $PROFILE.CurrentUserCurrentHost
+        }
+    }
+    catch { }
+
+    return $null
+}
+
 function Try-GetGitHubRepoFromOrigin {
     param([Parameter(Mandatory = $true)][string] $SourceRoot)
 
@@ -371,13 +386,16 @@ function Install-NexShellTo {
     if ($isGitRepo -and $git) {
         # If the profile folder is a git checkout, prefer a git "full reinstall":
         # it preserves expected line endings and avoids leaving the repo dirty.
-        $origin = & $git.Source -C $TargetDir remote get-url origin 2>$null
-        if ($LASTEXITCODE -ne 0) {
-            throw "This looks like a git checkout, but 'git remote get-url origin' failed. You're fucking stupid. Fix git/your repo and rerun."
+        $originStr = ''
+        try {
+            $origin = & $git.Source -C $TargetDir remote get-url origin 2>$null
+            if ($LASTEXITCODE -eq 0 -and $origin) {
+                $originStr = (($origin | Select-Object -First 1).Trim())
+            }
         }
-        $originStr = if ($origin) { ($origin | Select-Object -First 1).Trim() } else { '' }
+        catch { $originStr = '' }
 
-        if ($originStr -match [Regex]::Escape($Repo)) {
+        if ($originStr -and (Test-OriginUrlMatchesRepo -OriginUrl $originStr -Repo $Repo)) {
             & $git.Source -C $TargetDir fetch --prune origin main 2>$null | Out-Null
             if ($LASTEXITCODE -ne 0) { throw "git fetch failed. Check internet/auth and rerun." }
 
@@ -473,30 +491,22 @@ $repoOverride = Read-Host ("GitHub repo to install from [{0}]" -f $repo)
 if ($repoOverride) { $repo = $repoOverride.Trim() }
 if (-not $repo) { throw 'Repo cannot be empty.' }
 
-$documents = Get-DocumentsPath
-if (-not $documents) { throw 'Unable to locate your Documents folder.' }
+$profilePath = Get-ProfilePathForThisHost
+if (-not $profilePath) { throw 'Unable to determine $PROFILE for this host.' }
 
-$targets = @(
-    (Join-Path $documents 'PowerShell'),
-    (Join-Path $documents 'WindowsPowerShell')
-)
+$target = Split-Path -Parent $profilePath
+if (-not $target) { throw 'Unable to determine profile directory from $PROFILE.' }
 
 Write-Header 'Preparing'
-$needPackage = $false
 $needGit = $false
-foreach ($t in $targets) {
-    $gitDir = Join-Path $t '.git'
-    if (Test-Path -Path $gitDir) {
-        $originUrl = Try-GetOriginUrlFromGitConfig -TargetDir $t
-        if ($originUrl -and (Test-OriginUrlMatchesRepo -OriginUrl $originUrl -Repo $repo)) {
-            $needGit = $true
-        }
-        else {
-            $needPackage = $true
-        }
-    }
-    else {
-        $needPackage = $true
+$needPackage = $true
+
+$gitDir = Join-Path $target '.git'
+if (Test-Path -Path $gitDir) {
+    $originUrl = Try-GetOriginUrlFromGitConfig -TargetDir $target
+    if ($originUrl -and (Test-OriginUrlMatchesRepo -OriginUrl $originUrl -Repo $repo)) {
+        $needGit = $true
+        $needPackage = $false
     }
 }
 
@@ -528,11 +538,9 @@ try { $sha = Get-LatestSha -Repo $repo } catch { $sha = $null }
 
 Write-Header 'Installing'
 try {
-    foreach ($t in $targets) {
-        Write-Host ("- {0}" -f $t)
-        $pkgRoot = if ($pkg) { $pkg.PackageDir } else { $null }
-        Install-NexShellTo -PackageRoot $pkgRoot -TargetDir $t -AutoUpdate $autoUpdate -Repo $repo -Sha $sha
-    }
+    Write-Host ("Target  {0}" -f $target)
+    $pkgRoot = if ($pkg) { $pkg.PackageDir } else { $null }
+    Install-NexShellTo -PackageRoot $pkgRoot -TargetDir $target -AutoUpdate $autoUpdate -Repo $repo -Sha $sha
 }
 finally {
     try {
