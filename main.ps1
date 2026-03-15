@@ -35,6 +35,7 @@ if (Test-Path -Path $fnsDir) {
         Sort-Object -Property Name
 
     foreach ($fnsScript in $fnsScripts) {
+        if ($fnsScript.Name -eq 'ls_icons.ps1' -and -not $enabledNerdIcons) { continue }
         try {
             . $fnsScript.FullName
         }
@@ -51,10 +52,10 @@ if (Test-Path -Path $deprecatedCheckPath) {
     try { . $deprecatedCheckPath } catch { }
 }
 
-function Get-UpdateChannel {
+function Get-EnabledNerdIcons {
     param([Parameter(Mandatory = $true)][string] $Path)
 
-    $defaultValue = 'stable'
+    $defaultValue = $false
 
     try {
         if (-not (Test-Path -Path $Path)) { return $defaultValue }
@@ -74,11 +75,11 @@ function Get-UpdateChannel {
         if ($null -eq $line) { continue }
         $m = [Regex]::Match(
             $line,
-            '^\s*update_channel\s*=\s*"(stable|beta|nightly)"\s*(#.*)?$',
+            '^\s*enabled_nerd_icons\s*=\s*(true|false)\s*(#.*)?$',
             [System.Text.RegularExpressions.RegexOptions]::IgnoreCase
         )
         if ($m.Success) {
-            return $m.Groups[1].Value.ToLower()
+            return [bool]::Parse($m.Groups[1].Value.ToLower())
         }
     }
 
@@ -87,5 +88,8 @@ function Get-UpdateChannel {
 
 $updateChannel = Get-UpdateChannel -Path $configPath
 Set-Variable -Name updateChannel -Value $updateChannel -Scope Global -Force
+
+$enabledNerdIcons = Get-EnabledNerdIcons -Path $configPath
+Set-Variable -Name enabledNerdIcons -Value $enabledNerdIcons -Scope Global -Force
 
 Remove-Variable profileRoot, fnsDir, configPath, repoPath -ErrorAction SilentlyContinue

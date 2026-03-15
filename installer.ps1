@@ -446,7 +446,7 @@ function Install-NexShellTo {
 
     $channel = if ($UpdateChannel) { $UpdateChannel.Trim() } else { 'stable' }
     try {
-        ("update_channel = \"{0}\"`r`n" -f $channel) | Set-Content -Path (Join-Path $TargetDir 'config.toml') -Encoding UTF8 -Force
+        ("update_channel = \"{0}\"`r`n" -f $channel) + "enabled_nerd_icons = false`r`n" | Set-Content -Path (Join-Path $TargetDir 'config.toml') -Encoding UTF8 -Force
     }
     catch {
         throw ("failed writing config.toml: {0}" -f $_.Exception.Message)
