@@ -33,6 +33,17 @@ jobs:
             echo "channel=stable" >> $GITHUB_OUTPUT
           fi
 
+      - name: Generate release notes
+        id: notes
+        run: |
+          PREV_TAG=$(git describe --tags --abbrev=0 HEAD~1 2>/dev/null || git rev-list --max-parents=0 HEAD)
+          COMMITS=$(git log --oneline --pretty=format:"* [%h](https://github.com/${GITHUB_REPOSITORY}/commit/%H) %s" $PREV_TAG..HEAD)
+          {
+            echo "body<<EOF"
+            echo "$COMMITS"
+            echo "EOF"
+          } >> $GITHUB_OUTPUT
+
       - name: Build release package
         run: |
           rm -f release.zip
@@ -52,9 +63,9 @@ jobs:
           fi
 
           if gh release view "$TAG" >/dev/null 2>&1; then
-            gh release edit "$TAG" --title "$NAME" --prerelease="$PRERELEASE"
+            gh release edit "$TAG" --title "$NAME" --prerelease="$PRERELEASE" --notes "${{ steps.notes.outputs.body }}"
           else
-            gh release create "$TAG" --title "$NAME" --prerelease="$PRERELEASE"
+            gh release create "$TAG" --title "$NAME" --notes "${{ steps.notes.outputs.body }}" --prerelease="$PRERELEASE"
           fi
 
           gh release upload "$TAG" release.zip --clobber
