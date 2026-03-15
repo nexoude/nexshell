@@ -126,17 +126,29 @@ function chkupd {
         try { [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12 } catch { }
 
         $root = Get-InstallRoot
-        if (-not $root) { throw 'unable to find install root' }
+        if (-not $root) { 
+            Write-Error "Unable to determine installation directory. Ensure you're running from a properly installed NexShell profile. Run 'Get-Location' to check your current directory."
+            return
+        }
 
         $repo = Get-Repo -Root $root
-        if (-not $repo) { throw "repo is not configured. set `$env:nexshell_repo or create '$($root)\\.nexshell_repo' with 'owner/repo'" }
+        if (-not $repo) { 
+            Write-Error "Repository not configured. Set `$env:NEXSHELL_REPO = 'owner/repo' or create '$($root)\.nexshell_repo' with 'owner/repo'. Run 'upd' to update or reinstall."
+            return
+        }
 
         $channel = Get-UpdateChannel -Root $root
         $release = Get-ReleaseForChannel -Repo $repo -Channel $channel
-        if (-not $release) { throw "unable to check latest version (network/api failure) for channel '$channel'" }
+        if (-not $release) { 
+            Write-Error "Unable to check for updates (network or API failure) for channel '$channel'. Check your internet connection. Run 'upd -Channel $channel' to attempt update anyway."
+            return
+        }
 
         $tag = $release.tag_name
-        if (-not $tag) { throw 'release missing tag name' }
+        if (-not $tag) { 
+            Write-Error "Release is missing tag name. This may indicate an issue with the repository. Try again later."
+            return
+        }
 
         $localPath = Join-Path $root '.nexshell.sha'
         $local = $null
@@ -172,10 +184,14 @@ function chkupd {
         }
     }
     catch {
-        Write-Error -Message $_.Exception.Message -ErrorAction Continue
+        Write-Error -Message "Check update failed: $($_.Exception.Message)" -ErrorAction Continue
         $msg = $_.Exception.Message
         if ($msg -match 'connect to the remote server|network|TLS|certificate') {
-            Write-Host 'hint: this needs internet access to github (and may require tls 1.2 / proxy settings on older systems)'
+            Write-Host 'Hint: This requires internet access to GitHub. Ensure TLS 1.2 is enabled and check proxy settings. Run "upd" to attempt an update.'
+        } elseif ($msg -match 'access denied|permission|unauthorized') {
+            Write-Host 'Hint: Permission denied. Ensure you have read access to the installation directory.'
+        } else {
+            Write-Host 'Hint: If you are stuck, run "upd -Force" to force an update or check the repository configuration.'
         }
     }
 }
