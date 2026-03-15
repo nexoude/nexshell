@@ -27,7 +27,7 @@ if ($main -and (Test-Path -Path $main)) {
     . $main
 }
 else {
-    Write-Warning ("Profile entrypoint not found: {0}" -f $main)
+    Write-Warning ("profile entrypoint not found: {0}" -f $main)
 }
 
 Remove-Variable profileRoot, main -ErrorAction SilentlyContinue
