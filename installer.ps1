@@ -11,7 +11,6 @@ $ErrorActionPreference = 'Stop'
 
 function Write-Header {
     param([Parameter(Mandatory = $true)][string] $Text)
-    Write-Host ''
     Write-Host ("==> {0}" -f $Text)
 }
 
@@ -332,6 +331,7 @@ function Download-NexShellPackage {
     $zipUrl = "https://github.com/$Repo/archive/refs/heads/main.zip"
     $headers = @{ 'User-Agent' = 'NexShell' }
 
+    Write-Host "downloading package from github..."
     try {
         Invoke-WebRequest -Uri $zipUrl -Headers $headers -OutFile $zip -UseBasicParsing -ErrorAction Stop | Out-Null
     }
@@ -339,6 +339,7 @@ function Download-NexShellPackage {
         Invoke-WebRequest -Uri $zipUrl -Headers $headers -OutFile $zip -ErrorAction Stop | Out-Null
     }
 
+    Write-Host "extracting package..."
     Expand-ZipTo -ZipPath $zip -Destination $extract
 
     $repoRoot = Get-ChildItem -Path $extract -Directory -ErrorAction SilentlyContinue | Select-Object -First 1
@@ -396,9 +397,12 @@ function Install-NexShellTo {
         catch { $originStr = '' }
 
         if ($originStr -and (Test-OriginUrlMatchesRepo -OriginUrl $originStr -Repo $Repo)) {
+            try { Clear-Host } catch { }
+            Write-Host "updating repository via git..."
             & $git.Source -C $TargetDir fetch --prune origin main 2>$null | Out-Null
             if ($LASTEXITCODE -ne 0) { throw "git fetch failed. check internet/auth and rerun" }
 
+            Write-Host "resetting to latest version..."
             & $git.Source -C $TargetDir reset --hard origin/main 2>$null | Out-Null
             if ($LASTEXITCODE -ne 0) { throw "git reset failed. check your repo and rerun" }
 
@@ -409,6 +413,7 @@ function Install-NexShellTo {
     }
 
     if (-not $usedGitInstall) {
+        Write-Host "copying files..."
         foreach ($p in $pathsToRemove) {
             try {
                 if (Test-Path -Path $p) {
@@ -465,36 +470,23 @@ function Install-NexShellTo {
 try { Clear-Host } catch { }
 
 Write-Header 'NexShell Installer'
-Write-Host 'Welcome to the NexShell installer!'
-Write-Host 'Please note:'
-Write-Host '- This will replace your existing PowerShell profile. Any customizations will be lost.'
-Write-Host '- If issues arise, you can reinstall using this script.'
-Write-Host ''
-Write-Host 'Press Enter to continue, or Ctrl+C to cancel.'
+Write-Host 'welcome to the nexshell installer!'
+Write-Host 'please note:'
+Write-Host '- this will replace your existing powershell profile. any customizations will be lost.'
+Write-Host '- if issues arise, you can reinstall using this script.'
+Write-Host 'press enter to continue, or ctrl+c to cancel.'
 [void](Read-Host)
 
-Write-Header 'Another small thing before we start installing:'
-Write-Host '**YOU** are solely responsible for choosing to install, and this project is NOT provided with ANY warranty as it is sourced under the MIT license.'
+try { Clear-Host } catch { }
+Write-Header 'Disclaimer'
+Write-Host '**you** are solely responsible for choosing to install, and this project is not provided with any warranty as it is sourced under the mit license.'
+Write-Host 'press enter to continue, or ctrl+c to cancel.'
+[void](Read-Host)
 
-$autoUpdate = Read-YesNo -Prompt "Would you like to enable auto update? Please note this adds overhead for PowerShell loading as it will have to check for updates before letting you use it. This will not prompt you upon finding an update and find it automatically. Saying no will let you update and check for updates via 'upd' and 'chkupd'. (y/n)"
+try { Clear-Host } catch { }
+$autoUpdate = Read-YesNo -Prompt "would you like to enable auto update? please note this adds overhead for powershell loading as it will have to check for updates before letting you use it. this will not prompt you upon finding an update and find it automatically. saying no will let you update and check for updates via 'upd' and 'chkupd'. (y/n)"
 
-$repo = $env:NEXSHELL_REPO
-if ($repo) { $repo = $repo.Trim() }
-
-if (-not $repo) {
-    $here = $null
-    try { $here = $PSScriptRoot } catch { $here = $null }
-    if ($here) {
-        $fromOrigin = Try-GetGitHubRepoFromOrigin -SourceRoot $here
-        if ($fromOrigin) { $repo = $fromOrigin }
-    }
-}
-
-if (-not $repo) { $repo = 'nexoude/nexshell' }
-
-$repoOverride = Read-Host ("GitHub repo to install from [{0}]" -f $repo)
-if ($repoOverride) { $repo = $repoOverride.Trim() }
-if (-not $repo) { throw 'Repo cannot be empty.' }
+$repo = 'nexoude/nexshell'
 
 $profilePath = Get-ProfilePathForThisHost
 if (-not $profilePath) { throw 'Unable to determine $PROFILE for this host.' }
@@ -502,6 +494,7 @@ if (-not $profilePath) { throw 'Unable to determine $PROFILE for this host.' }
 $target = Split-Path -Parent $profilePath
 if (-not $target) { throw 'Unable to determine profile directory from $PROFILE.' }
 
+try { Clear-Host } catch { }
 Write-Header 'Preparing'
 $needGit = $false
 $needPackage = $true
@@ -527,7 +520,8 @@ if ($needGit) {
 
 $pkg = $null
 if ($needPackage) {
-    Write-Header 'Downloading'
+    try { Clear-Host } catch { }
+Write-Header 'Downloading'
     try {
         $pkg = Download-NexShellPackage -Repo $repo
     }
@@ -541,27 +535,31 @@ if ($needPackage) {
 $sha = $null
 try { $sha = Get-LatestSha -Repo $repo } catch { $sha = $null }
 
+try { Clear-Host } catch { }
 Write-Header 'Installing'
 try {
-    Write-Host ("Target  {0}" -f $target)
+    Write-Host ("target: {0}" -f $target)
     $pkgRoot = if ($pkg) { $pkg.PackageDir } else { $null }
     Install-NexShellTo -PackageRoot $pkgRoot -TargetDir $target -AutoUpdate $autoUpdate -Repo $repo -Sha $sha
 }
 finally {
     try {
         if ($pkg -and $pkg.TempRoot -and (Test-Path -Path $pkg.TempRoot)) {
+            Write-Host "cleaning up temporary files..."
             Remove-Item -Path $pkg.TempRoot -Recurse -Force
         }
     }
     catch { }
 }
 
+try { Clear-Host } catch { }
 Write-Header 'Done'
-Write-Host 'restart powershell to pick up the new profile'
+Write-Host 'nexshell has been installed successfully!'
+Write-Host 'please restart powershell to apply the new profile.'
 if ($autoUpdate) {
-    Write-Host 'auto update is enabled'
+    Write-Host 'auto-update is enabled.'
 }
 else {
-    Write-Host "auto update is disabled. use 'chkupd' and 'upd' when you want"
+    Write-Host "auto-update is disabled. use 'chkupd' and 'upd' to check for and install updates manually."
 }
 
