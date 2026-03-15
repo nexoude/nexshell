@@ -6,7 +6,7 @@ Do not edit unless you understand PowerShell scoping and command resolution.
 function which {
     [CmdletBinding()]
     param(
-        [Parameter(Position = 0, ValueFromPipeline = $true, ValueFromPipelineByPropertyName = $true)]
+        [Parameter(Mandatory = $true, Position = 0, ValueFromPipeline = $true, ValueFromPipelineByPropertyName = $true)]
         [Alias('Command', 'CommandName', 'Name')]
         [string[]] $InputObject,
 
@@ -15,8 +15,6 @@ function which {
     )
 
     begin {
-        $hadAnyInput = $false
-
         $getCommandSupportsAll = $false
         try {
             $gc = Get-Command -Name 'Get-Command' -ErrorAction Stop
@@ -102,14 +100,12 @@ function which {
 
     process {
         foreach ($rawName in $InputObject) {
-            $hadAnyInput = $true
-
             $name = $rawName
             if ($null -eq $name) { continue }
             $name = $name.Trim()
 
             if ($name.Length -eq 0) {
-                Write-Error 'empty command name.'
+                Write-Error 'which: empty command name.'
                 continue
             }
 
@@ -123,12 +119,12 @@ function which {
                 }
             }
             catch {
-                Write-Error ("command not found: {0}" -f $name)
+                Write-Error ("which: command not found: {0}" -f $name)
                 continue
             }
 
             if (-not $cmds) {
-                Write-Error ("command not found: {0}" -f $name)
+                Write-Error ("which: command not found: {0}" -f $name)
                 continue
             }
 
@@ -196,7 +192,7 @@ function which {
                     }
                 }
                 catch {
-                    Write-Warning ("failed to format result for '{0}': {1}" -f $name, $_.Exception.Message)
+                    Write-Warning ("which: failed to format result for '{0}': {1}" -f $name, $_.Exception.Message)
                 }
             }
 
@@ -209,12 +205,6 @@ function which {
                     Write-Output $p
                 }
             }
-        }
-    }
-
-    end {
-        if (-not $hadAnyInput) {
-            Write-Error 'no input provided'
         }
     }
 }
