@@ -26,7 +26,7 @@ function Read-YesNo {
         if ($a -eq 'y' -or $a -eq 'yes') { return $true }
         if ($a -eq 'n' -or $a -eq 'no') { return $false }
 
-        Write-Host "Please enter 'y' or 'n' (or 'yes'/'no')."
+        Write-Host "Please enter 'y' or 'n' (or 'yes'/'no')"
     }
 }
 
@@ -169,7 +169,7 @@ function Ensure-ScoopInstalled {
         Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned -Force | Out-Null
     }
     catch {
-        Write-Host "Couldn't set ExecutionPolicy for CurrentUser: $($_.Exception.Message)"
+        Write-Host "couldn't set ExecutionPolicy for CurrentUser: $($_.Exception.Message)"
     }
 
     $scriptText = $null
@@ -199,21 +199,21 @@ function Ensure-ScoopInstalled {
     }
 
     if (-not $scriptText) {
-        throw "Couldn't download Scoop installer (no internet / TLS / proxy issue)."
+        throw "couldn't download scoop installer (no internet / tls / proxy issue)"
     }
 
     try {
         Invoke-Expression $scriptText
     }
     catch {
-        throw ("Scoop install failed: {0}" -f $_.Exception.Message)
+        throw ("scoop install failed: {0}" -f $_.Exception.Message)
     }
 
     if (-not $env:USERPROFILE) { return }
     Add-ToPathIfMissing -Dir (Join-Path $env:USERPROFILE 'scoop\shims')
 
     if (-not (Get-ScoopCommandPath)) {
-        throw "Scoop install ran, but the 'scoop' command still isn't available. You're fucking stupid. Fix Scoop, then rerun this installer."
+        throw "scoop install ran, but the 'scoop' command still isn't available. you're fucking stupid. fix scoop, then rerun this installer"
     }
 }
 
@@ -221,27 +221,27 @@ function Ensure-GitInstalled {
     if (Get-Command -Name 'git' -ErrorAction SilentlyContinue) { return }
 
     Write-Header 'Git is missing'
-    Write-Host "Git isn't installed. You're fucking stupid. You should install Git first."
-    Write-Host 'Trying to install Git using Scoop anyway...'
+    Write-Host "git isn't installed. you're fucking stupid. you should install git first"
+    Write-Host 'trying to install git using scoop anyway...'
 
     try {
         Ensure-ScoopInstalled
     }
     catch {
-        throw ("Git isn't installed and Scoop couldn't be installed. {0}`nYou're fucking stupid. Install Git first, then rerun this installer." -f $_.Exception.Message)
+        throw ("git isn't installed and scoop couldn't be installed. {0}`nyou're fucking stupid. install git first, then rerun this installer." -f $_.Exception.Message)
     }
 
     $scoop = Get-ScoopCommandPath
     if (-not $scoop) {
-        throw "Scoop seems installed but the 'scoop' command isn't available. You're fucking stupid. Fix Scoop/Git and rerun."
+        throw "scoop seems installed but the 'scoop' command isn't available. you're fucking stupid. fix scoop/git and rerun"
     }
 
     try {
         & $scoop install git | Out-Null
-        if ($LASTEXITCODE -ne 0) { throw ("scoop install git failed (exit code {0})." -f $LASTEXITCODE) }
+        if ($LASTEXITCODE -ne 0) { throw ("scoop install git failed (exit code {0})" -f $LASTEXITCODE) }
     }
     catch {
-        throw ("Failed to install Git via Scoop: {0}`nYou're fucking stupid. Install Git manually and rerun." -f $_.Exception.Message)
+        throw ("failed to install git via scoop: {0}`nyou're fucking stupid. install git manually and rerun." -f $_.Exception.Message)
     }
 
     if ($env:USERPROFILE) {
@@ -249,7 +249,7 @@ function Ensure-GitInstalled {
     }
 
     if (-not (Get-Command -Name 'git' -ErrorAction SilentlyContinue)) {
-        throw "Git still isn't available after install. You're fucking stupid. Restart PowerShell and rerun the installer."
+        throw "git still isn't available after install. you're fucking stupid. restart powershell and rerun the installer"
     }
 }
 
@@ -278,9 +278,9 @@ function Expand-ZipTo {
     # Old Windows fallback.
     $shell = New-Object -ComObject Shell.Application
     $zipNs = $shell.NameSpace($ZipPath)
-    if (-not $zipNs) { throw 'Unable to open zip file for extraction.' }
+    if (-not $zipNs) { throw 'unable to open zip file for extraction' }
     $destNs = $shell.NameSpace($Destination)
-    if (-not $destNs) { throw 'Unable to open destination folder for extraction.' }
+    if (-not $destNs) { throw 'unable to open destination folder for extraction' }
     $destNs.CopyHere($zipNs.Items(), 0x10)
 }
 
@@ -318,7 +318,7 @@ function Download-NexShellPackage {
     param([Parameter(Mandatory = $true)][string] $Repo)
 
     if (-not (Get-Command -Name Invoke-WebRequest -ErrorAction SilentlyContinue)) {
-        throw 'This installer requires PowerShell 3+ (Invoke-WebRequest).'
+        throw 'this installer requires powershell 3+ (invoke-webrequest)'
     }
 
     Ensure-Tls12
@@ -342,11 +342,11 @@ function Download-NexShellPackage {
     Expand-ZipTo -ZipPath $zip -Destination $extract
 
     $repoRoot = Get-ChildItem -Path $extract -Directory -ErrorAction SilentlyContinue | Select-Object -First 1
-    if (-not $repoRoot) { throw 'Downloaded archive did not contain a root folder.' }
+    if (-not $repoRoot) { throw 'downloaded archive did not contain a root folder' }
 
     foreach ($req in @('Microsoft.PowerShell_profile.ps1', 'main.ps1', 'installer.ps1', 'fns')) {
         if (-not (Test-Path -Path (Join-Path $repoRoot.FullName $req))) {
-            throw ("Downloaded package missing: {0}" -f $req)
+            throw ("downloaded package missing: {0}" -f $req)
         }
     }
 
@@ -397,10 +397,10 @@ function Install-NexShellTo {
 
         if ($originStr -and (Test-OriginUrlMatchesRepo -OriginUrl $originStr -Repo $Repo)) {
             & $git.Source -C $TargetDir fetch --prune origin main 2>$null | Out-Null
-            if ($LASTEXITCODE -ne 0) { throw "git fetch failed. Check internet/auth and rerun." }
+            if ($LASTEXITCODE -ne 0) { throw "git fetch failed. check internet/auth and rerun" }
 
             & $git.Source -C $TargetDir reset --hard origin/main 2>$null | Out-Null
-            if ($LASTEXITCODE -ne 0) { throw "git reset failed. Check your repo and rerun." }
+            if ($LASTEXITCODE -ne 0) { throw "git reset failed. check your repo and rerun" }
 
             $usedGitInstall = $true
             $Sha = $null
@@ -422,11 +422,11 @@ function Install-NexShellTo {
                 }
             }
             catch {
-                throw ("Failed removing '{0}': {1}" -f $p, $_.Exception.Message)
+                throw ("failed removing '{0}': {1}" -f $p, $_.Exception.Message)
             }
         }
 
-        if (-not $PackageRoot) { throw 'Internal error: PackageRoot is required for non-git install.' }
+        if (-not $PackageRoot) { throw 'internal error: packageroot is required for non-git install' }
 
         try {
             Copy-Item -Path (Join-Path $PackageRoot 'Microsoft.PowerShell_profile.ps1') -Destination (Join-Path $TargetDir 'Microsoft.PowerShell_profile.ps1') -Force
@@ -435,7 +435,7 @@ function Install-NexShellTo {
             Copy-Item -Path (Join-Path $PackageRoot 'fns') -Destination (Join-Path $TargetDir 'fns') -Recurse -Force
         }
         catch {
-            throw ("Copy failed: {0}" -f $_.Exception.Message)
+            throw ("copy failed: {0}" -f $_.Exception.Message)
         }
     }
 
@@ -444,14 +444,14 @@ function Install-NexShellTo {
         ("auto_update = {0}`r`n" -f $cfg) | Set-Content -Path (Join-Path $TargetDir 'config.toml') -Encoding UTF8 -Force
     }
     catch {
-        throw ("Failed writing config.toml: {0}" -f $_.Exception.Message)
+        throw ("failed writing config.toml: {0}" -f $_.Exception.Message)
     }
 
     try {
         ($Repo.Trim() + "`r`n") | Set-Content -Path (Join-Path $TargetDir '.nexshell_repo') -Encoding UTF8 -Force
     }
     catch {
-        throw ("Failed writing .nexshell_repo: {0}" -f $_.Exception.Message)
+        throw ("failed writing .nexshell_repo: {0}" -f $_.Exception.Message)
     }
 
     if ($Sha) {
@@ -465,10 +465,10 @@ function Install-NexShellTo {
 try { Clear-Host } catch { }
 
 Write-Header 'NexShell Installer'
-Write-Host '1) It will delete any previous data in your profile, NO MATTER WHAT.'
-Write-Host '2) If something breaks completely at some point, try reinstalling everything with this script.'
+Write-Host '1) it will delete any previous data in your profile, no matter what'
+Write-Host '2) if something breaks completely at some point, try reinstalling everything with this script'
 Write-Host ''
-Write-Host 'Press Enter to continue, or Ctrl+C to cancel.'
+Write-Host 'press enter to continue, or ctrl+c to cancel'
 [void](Read-Host)
 
 $autoUpdate = Read-YesNo -Prompt "Would you like to enable auto update? Please note this adds overhead for PowerShell loading as it will have to check for updates before letting you use it. This will not prompt you upon finding an update and find it automatically. Saying no will let you update and check for updates via 'upd' and 'chkupd'. (y/n)"
@@ -528,7 +528,7 @@ if ($needPackage) {
     }
     catch {
         Write-Error -Message $_.Exception.Message -ErrorAction Continue
-        Write-Host 'Hint: this needs internet access to GitHub (and may require TLS 1.2 / proxy settings on older systems).'
+        Write-Host 'hint: this needs internet access to github (and may require tls 1.2 / proxy settings on older systems)'
         throw
     }
 }
@@ -552,11 +552,11 @@ finally {
 }
 
 Write-Header 'Done'
-Write-Host 'Restart PowerShell to pick up the new profile.'
+Write-Host 'restart powershell to pick up the new profile'
 if ($autoUpdate) {
-    Write-Host 'Auto update is enabled.'
+    Write-Host 'auto update is enabled'
 }
 else {
-    Write-Host "Auto update is disabled. Use 'chkupd' and 'upd' when you want."
+    Write-Host "auto update is disabled. use 'chkupd' and 'upd' when you want"
 }
 

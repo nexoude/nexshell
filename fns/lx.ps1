@@ -4,11 +4,18 @@ Note that it uses Write-Host and not Write-Output,
 so it won't work in pipelines. It's meant for interactive use only.
 #>
 function lx {
+    [CmdletBinding()]
     param([string]$Path = '.')
 
-    $width = $Host.UI.RawUI.BufferSize.Width
-    $items = Get-ChildItem -Path $Path -Force -ErrorAction SilentlyContinue |
-    ForEach-Object { if ($_.PSIsContainer) { "$($_.Name)/" } else { $_.Name } }
+    try {
+        $width = $Host.UI.RawUI.BufferSize.Width
+        $items = Get-ChildItem -Path $Path -Force -ErrorAction Stop |
+        ForEach-Object { if ($_.PSIsContainer) { "$($_.Name)/" } else { $_.Name } }
+    }
+    catch {
+        Write-Warning ("lx: failed to list directory '{0}': {1}" -f $Path, $_.Exception.Message)
+        return
+    }
 
     $items = @($items)
 

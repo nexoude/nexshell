@@ -37,7 +37,7 @@ function upd {
         param([Parameter(Mandatory = $true)][string] $Repo)
 
         if (-not (Get-Command -Name Invoke-RestMethod -ErrorAction SilentlyContinue) -and -not (Get-Command -Name Invoke-WebRequest -ErrorAction SilentlyContinue)) {
-            throw 'upd requires PowerShell 3+ (Invoke-RestMethod/Invoke-WebRequest).'
+            throw 'upd requires PowerShell 3+ (Invoke-RestMethod/Invoke-WebRequest)'
         }
 
         $uri = "https://api.github.com/repos/$Repo/commits/main"
@@ -62,13 +62,29 @@ function upd {
             [Parameter(Mandatory = $true)][string] $Destination
         )
 
-        if (Get-Command -Name Expand-Archive -ErrorAction SilentlyContinue) {
-            Expand-Archive -Path $ZipPath -DestinationPath $Destination -Force
-            return
-        }
+        try {
+            if (Get-Command -Name Expand-Archive -ErrorAction SilentlyContinue) {
+                Expand-Archive -Path $ZipPath -DestinationPath $Destination -Force
+                return
+            }
 
-        Add-Type -AssemblyName System.IO.Compression.FileSystem -ErrorAction SilentlyContinue | Out-Null
-        [System.IO.Compression.ZipFile]::ExtractToDirectory($ZipPath, $Destination)
+            Add-Type -AssemblyName System.IO.Compression.FileSystem -ErrorAction Stop | Out-Null
+            [System.IO.Compression.ZipFile]::ExtractToDirectory($ZipPath, $Destination)
+        }
+        catch {
+            # Fallback to shell
+            try {
+                $shell = New-Object -ComObject Shell.Application
+                $zipNs = $shell.NameSpace($ZipPath)
+                if (-not $zipNs) { throw 'Unable to open zip file for extraction.' }
+                $destNs = $shell.NameSpace($Destination)
+                if (-not $destNs) { throw 'Unable to open destination folder for extraction.' }
+                $destNs.CopyHere($zipNs.Items(), 0x10)
+            }
+            catch {
+                throw ("failed to extract zip: {0}" -f $_.Exception.Message)
+            }
+        }
     }
 
     $tmp = $null
@@ -76,13 +92,13 @@ function upd {
         try { [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12 } catch { }
 
         $root = Get-InstallRoot
-        if (-not $root) { throw 'Unable to find install root.' }
+        if (-not $root) { throw 'unable to find install root.' }
 
         $repo = Get-Repo -Root $root
-        if (-not $repo) { throw "Repo is not configured. Set `$env:NEXSHELL_REPO or create '$($root)\\.nexshell_repo' with 'owner/repo'." }
+        if (-not $repo) { throw "unable to find repo configuration. Set `$env:NEXSHELL_REPO or create '$($root)\\.nexshell_repo' with 'owner/repo'." }
 
         $latest = Get-LatestSha -Repo $repo
-        if (-not $latest) { throw 'Unable to check latest version (network/API failure).' }
+        if (-not $latest) { throw 'unable to check latest version (network/API failure).' }
 
         $localPath = Join-Path $root '.nexshell.sha'
         $local = $null
@@ -113,7 +129,7 @@ function upd {
         Expand-ZipTo -ZipPath $zip -Destination $extract
 
         $repoRoot = Get-ChildItem -Path $extract -Directory -ErrorAction SilentlyContinue | Select-Object -First 1
-        if (-not $repoRoot) { throw 'Downloaded archive did not contain a root folder.' }
+        if (-not $repoRoot) { throw 'downloaded archive did not contain a root folder.' }
 
         $newProfile = Join-Path $repoRoot.FullName 'Microsoft.PowerShell_profile.ps1'
         $newMain = Join-Path $repoRoot.FullName 'main.ps1'
@@ -146,7 +162,7 @@ function upd {
         Write-Error -Message $_.Exception.Message -ErrorAction Continue
         $msg = $_.Exception.Message
         if ($msg -match 'connect to the remote server|network|TLS|certificate') {
-            Write-Host 'Hint: this needs internet access to GitHub (and may require TLS 1.2 / proxy settings on older systems).'
+            Write-Host 'hint: this needs internet access to github (and may require tls 1.2 / proxy settings on older systems)'
         }
     }
     finally {

@@ -105,7 +105,7 @@ function which {
             $name = $name.Trim()
 
             if ($name.Length -eq 0) {
-                Write-Error 'which: empty command name.'
+                Write-Error 'which: empty command name'
                 continue
             }
 

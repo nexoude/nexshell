@@ -54,7 +54,7 @@ function chkupd {
         param([Parameter(Mandatory = $true)][string] $Repo)
 
         if (-not (Get-Command -Name Invoke-RestMethod -ErrorAction SilentlyContinue) -and -not (Get-Command -Name Invoke-WebRequest -ErrorAction SilentlyContinue)) {
-            throw 'chkupd requires PowerShell 3+ (Invoke-RestMethod/Invoke-WebRequest).'
+            throw 'chkupd requires powershell 3+ (invoke-restmethod/invoke-webrequest)'
         }
 
         $uri = "https://api.github.com/repos/$Repo/commits/main"
@@ -77,13 +77,13 @@ function chkupd {
         try { [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12 } catch { }
 
         $root = Get-InstallRoot
-        if (-not $root) { throw 'Unable to find install root.' }
+        if (-not $root) { throw 'unable to find install root' }
 
         $repo = Get-Repo -Root $root
-        if (-not $repo) { throw "Repo is not configured. Set `$env:NEXSHELL_REPO or create '$($root)\\.nexshell_repo' with 'owner/repo'." }
+        if (-not $repo) { throw "repo is not configured. set `$env:nexshell_repo or create '$($root)\\.nexshell_repo' with 'owner/repo'" }
 
         $latest = Get-LatestSha -Repo $repo
-        if (-not $latest) { throw 'Unable to check latest version (network/API failure).' }
+        if (-not $latest) { throw 'unable to check latest version (network/api failure)' }
 
         $localPath = Join-Path $root '.nexshell.sha'
         $local = $null
@@ -120,7 +120,7 @@ function chkupd {
         Write-Error -Message $_.Exception.Message -ErrorAction Continue
         $msg = $_.Exception.Message
         if ($msg -match 'connect to the remote server|network|TLS|certificate') {
-            Write-Host 'Hint: this needs internet access to GitHub (and may require TLS 1.2 / proxy settings on older systems).'
+            Write-Host 'hint: this needs internet access to github (and may require tls 1.2 / proxy settings on older systems)'
         }
     }
 }

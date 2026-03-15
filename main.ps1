@@ -39,7 +39,7 @@ if (Test-Path -Path $fnsDir) {
             . $fnsScript.FullName
         }
         catch {
-            Write-Warning ("Failed to load: {0} ({1})" -f $fnsScript.FullName, $_.Exception.Message)
+            Write-Warning ("failed to load: {0} ({1})" -f $fnsScript.FullName, $_.Exception.Message)
         }
     }
 
@@ -103,7 +103,7 @@ if ($autoUpdate) {
         }
         catch {
             # Do not block shell startup on updater errors.
-            Write-Warning ("Auto-update failed: {0}" -f $_.Exception.Message)
+            Write-Warning ("auto-update failed: {0}" -f $_.Exception.Message)
         }
     }
 

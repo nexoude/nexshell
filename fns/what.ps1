@@ -4,6 +4,7 @@ Do not edit unless you understand what it does.
 #>
 
 function what {
+    [CmdletBinding()]
     param([string] $Topic)
 
     function Write-HelpTable {
@@ -30,13 +31,13 @@ function what {
         lx     = @{
             short = 'compact directory listing (interactive)'
             long  = @(
-                'lx prints a compact, columnar directory listing.',
+                'lx prints a compact, columnar directory listing',
                 '',
-                'Technicals:',
-                '- Uses `Get-ChildItem -Force` (shows hidden files).',
-                '- Uses `$Host.UI.RawUI.BufferSize.Width` to compute columns.',
-                '- Appends "/" to directory names, prints dirs in Blue and files in White.',
-                '- Uses `Write-Host`, so it is meant for interactive use (not pipelines).'
+                'technicals:',
+                '- uses `get-childitem -force` (shows hidden files)',
+                '- uses `$host.ui.rawui.buffersize.width` to compute columns',
+                '- appends "/" to directory names, prints dirs in blue and files in white',
+                '- uses `write-host`, so it is meant for interactive use (not pipelines)'
             )
         }
         which  = @{
@@ -44,40 +45,40 @@ function what {
             long  = @(
                 'which answers: "what will run if I type this command?"',
                 '',
-                'Examples:',
+                'examples:',
                 '- which git',
                 '- which -a git   (show all matches when supported)',
                 '',
-                'Technicals:',
-                '- Uses `Get-Command` and tries to print a real filesystem path when available.',
-                '- On older PowerShell versions, it includes a best-effort PATH search fallback.'
+                'technicals:',
+                '- uses `get-command` and tries to print a real filesystem path when available',
+                '- on older powershell versions, it includes a best-effort path search fallback'
             )
         }
         chkupd = @{
             short = 'checks if updates are available'
             long  = @(
-                'chkupd checks GitHub to see if there is a newer NexShell version available.',
+                'chkupd checks github to see if there is a newer nexshell version available',
                 '',
-                'Notes:',
-                '- Requires repo config via `$env:NEXSHELL_REPO` or a `.nexshell_repo` file.',
-                '- Needs internet access to GitHub.'
+                'notes:',
+                '- requires repo config via `$env:nexshell_repo` or a `.nexshell_repo` file',
+                '- needs internet access to github'
             )
         }
         upd    = @{
             short = 'updates NexShell (no prompts)'
             long  = @(
-                'upd downloads and installs the latest NexShell version from GitHub.',
+                'upd downloads and installs the latest nexshell version from github',
                 '',
-                'Important:',
-                '- It does NOT prompt for confirmations.',
-                '- Requires repo config via `$env:NEXSHELL_REPO` or a `.nexshell_repo` file.',
-                '- Needs internet access to GitHub.'
+                'important:',
+                '- it does not prompt for confirmations',
+                '- requires repo config via `$env:nexshell_repo` or a `.nexshell_repo` file',
+                '- needs internet access to github'
             )
         }
         what   = @{
-            short = 'NexShell help tool'
+            short = 'nexshell help tool'
             long  = @(
-                '`what` is a help tool for NexShell.'
+                '`what` is a help tool for nexshell'
             )
         }
     }
@@ -90,7 +91,7 @@ function what {
     $t = @($Topic) + @($args)
     $t = @($t | Where-Object { $_ -ne $null } | ForEach-Object { $_.ToString().Trim() } | Where-Object { $_.Length -gt 0 })
     if (-not $t -or $t.Count -eq 0) {
-        Write-Host '`what` is a help tool for NexShell.'
+        Write-Host '`what` is a help tool for nexshell'
         return
     }
 
@@ -107,13 +108,13 @@ function what {
 
     $key = $t[0].ToLower()
     if ($key -eq 'what') {
-        Write-Host '`what` is a help tool for NexShell.'
+        Write-Host '`what` is a help tool for nexshell'
         return
     }
 
     if (-not $help.ContainsKey($key)) {
-        Write-Host ("No NexShell help for: {0}" -f $t[0])
-        Write-Host "Run 'what' to see available NexShell commands."
+        Write-Host ("no nexshell help for: {0}" -f $t[0])
+        Write-Host "run 'what' to see available nexshell commands"
         return
     }
 
