@@ -73,6 +73,31 @@ function chkupd {
         return $null
     }
 
+    function Get-CompareInfo {
+        param(
+            [Parameter(Mandatory = $true)][string] $Repo,
+            [Parameter(Mandatory = $true)][string] $BaseSha,
+            [Parameter(Mandatory = $true)][string] $HeadSha
+        )
+
+        $uri = "https://api.github.com/repos/$Repo/compare/$BaseSha...$HeadSha"
+        $headers = @{ 'User-Agent' = 'NexShell' }
+
+        try {
+            if (Get-Command -Name Invoke-RestMethod -ErrorAction SilentlyContinue) {
+                return Invoke-RestMethod -Uri $uri -Headers $headers -Method Get -ErrorAction Stop
+            }
+
+            $raw = Invoke-WebRequest -Uri $uri -Headers $headers -Method Get -ErrorAction Stop
+            if (-not $raw -or -not $raw.Content) { return $null }
+            if (-not (Get-Command -Name ConvertFrom-Json -ErrorAction SilentlyContinue)) { return $null }
+            return $raw.Content | ConvertFrom-Json
+        }
+        catch {
+            return $null
+        }
+    }
+
     try {
         try { [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12 } catch { }
 
@@ -109,11 +134,26 @@ function chkupd {
             }
         }
         else {
-            Write-InfoTable -Rows @{
+            $status = 'update available'
+            $detail = $null
+
+            $cmp = Get-CompareInfo -Repo $repo -BaseSha $local -HeadSha $latest
+            if ($cmp -and $cmp.status) {
+                switch ($cmp.status) {
+                    'behind' { $status = 'update available'; $detail = "remote is $($cmp.behind_by) commits ahead" }
+                    'ahead'  { $status = 'local ahead'; $detail = "remote is $($cmp.behind_by) commits behind" }
+                    'diverged' { $status = 'diverged'; $detail = "ahead by $($cmp.ahead_by), behind by $($cmp.behind_by)" }
+                    default { $status = 'update available' }
+                }
+            }
+
+            $rows = @{
                 Installed = $local.Substring(0, 12)
                 Latest    = $latest.Substring(0, 12)
-                Status    = 'update available'
+                Status    = $status
             }
+            if ($detail) { $rows['Detail'] = $detail }
+            Write-InfoTable -Rows $rows
         }
     }
     catch {

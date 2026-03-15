@@ -5,7 +5,9 @@ Do not edit unless you understand what it does.
 
 function upd {
     [CmdletBinding()]
-    param()
+    param(
+        [switch] $Force
+    )
 
     $ErrorActionPreference = 'Stop'
 
@@ -54,6 +56,33 @@ function upd {
         $obj = $raw.Content | ConvertFrom-Json
         if ($obj -and $obj.sha) { return [string] $obj.sha }
         return $null
+    }
+
+    function Get-CompareInfo {
+        param(
+            [Parameter(Mandatory = $true)][string] $Repo,
+            [Parameter(Mandatory = $true)][string] $BaseSha,
+            [Parameter(Mandatory = $true)][string] $HeadSha
+        )
+
+        # Compare commits to determine if local is ahead/behind/diverged.
+        # We use the GitHub compare API: /repos/{owner}/{repo}/compare/{base}...{head}
+        $uri = "https://api.github.com/repos/$Repo/compare/$BaseSha...$HeadSha"
+        $headers = @{ 'User-Agent' = 'NexShell' }
+
+        try {
+            if (Get-Command -Name Invoke-RestMethod -ErrorAction SilentlyContinue) {
+                return Invoke-RestMethod -Uri $uri -Headers $headers -Method Get -ErrorAction Stop
+            }
+
+            $raw = Invoke-WebRequest -Uri $uri -Headers $headers -Method Get -ErrorAction Stop
+            if (-not $raw -or -not $raw.Content) { return $null }
+            if (-not (Get-Command -Name ConvertFrom-Json -ErrorAction SilentlyContinue)) { return $null }
+            return $raw.Content | ConvertFrom-Json
+        }
+        catch {
+            return $null
+        }
     }
 
     function Expand-ZipTo {
@@ -109,6 +138,21 @@ function upd {
 
         if ($local -and ($local -eq $latest)) {
             return
+        }
+
+        if ($local) {
+            $cmp = Get-CompareInfo -Repo $repo -BaseSha $local -HeadSha $latest
+            if ($cmp -and $cmp.status) {
+                if ($cmp.status -in @('ahead', 'diverged')) {
+                    if (-not $Force) {
+                        $localShort = $local.Substring(0, 12)
+                        $latestShort = $latest.Substring(0, 12)
+                        Write-Host "local version ($localShort) is ahead or diverged from remote ($latestShort); update would overwrite local changes."
+                        Write-Host "Rerun with -Force to proceed (downgrade may occur)."
+                        return
+                    }
+                }
+            }
         }
 
         $tmp = Join-Path ([IO.Path]::GetTempPath()) ('NexShell-' + [Guid]::NewGuid().ToString('N'))
