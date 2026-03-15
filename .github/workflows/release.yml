@@ -1,0 +1,63 @@
+name: Release
+
+on:
+  push:
+    branches:
+      - main
+      - beta
+      - nightly
+  workflow_dispatch:
+  schedule:
+    - cron: '0 0 * * *'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Determine release channel
+        id: channel
+        run: |
+          if [[ "${GITHUB_REF}" == "refs/heads/main" ]]; then
+            echo "channel=stable" >> $GITHUB_OUTPUT
+          elif [[ "${GITHUB_REF}" == "refs/heads/beta" ]]; then
+            echo "channel=beta" >> $GITHUB_OUTPUT
+          elif [[ "${GITHUB_REF}" == "refs/heads/nightly" ]]; then
+            echo "channel=nightly" >> $GITHUB_OUTPUT
+          else
+            echo "channel=stable" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Build release package
+        run: |
+          rm -f release.zip
+          zip -r release.zip . -x .git/** .github/** release.zip
+
+      - name: Create or update GitHub release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -e
+          CHANNEL="${{ steps.channel.outputs.channel }}"
+          TAG="$CHANNEL"
+          NAME="NexShell ($CHANNEL)"
+          PRERELEASE="false"
+          if [[ "$CHANNEL" != "stable" ]]; then
+            PRERELEASE="true"
+          fi
+
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release edit "$TAG" --title "$NAME" --prerelease="$PRERELEASE"
+          else
+            gh release create "$TAG" --title "$NAME" --prerelease="$PRERELEASE"
+          fi
+
+          gh release upload "$TAG" release.zip --clobber
