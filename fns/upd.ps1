@@ -12,6 +12,15 @@ function upd {
 
     $ErrorActionPreference = 'Stop'
 
+    # Validate Channel parameter
+    if ($Channel) {
+        $validChannels = @('stable', 'beta', 'nightly')
+        if ($Channel.Trim().ToLower() -notin $validChannels) {
+            Write-Error "Invalid channel '$Channel'. Valid channels are: $($validChannels -join ', '). Run 'chkupd' to check for available updates."
+            return
+        }
+    }
+
     function Get-InstallRoot {
         $dir = $null
         try { $dir = $PSScriptRoot } catch { $dir = $null }
@@ -146,21 +155,36 @@ function upd {
         try { [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12 } catch { }
 
         $root = Get-InstallRoot
-        if (-not $root) { throw 'unable to find install root.' }
+        if (-not $root) { 
+            Write-Error "Unable to determine installation directory. Ensure you're running from a properly installed NexShell profile. Run 'Get-Location' to check your current directory, or reinstall using the installer."
+            return
+        }
 
         $repo = Get-Repo -Root $root
-        if (-not $repo) { throw "unable to find repo configuration. Set `$env:NEXSHELL_REPO or create '$($root)\\.nexshell_repo' with 'owner/repo'." }
+        if (-not $repo) { 
+            Write-Error "Unable to find repository configuration. Set `$env:NEXSHELL_REPO = 'owner/repo' or create '$($root)\.nexshell_repo' with 'owner/repo'. Run 'chkupd' to check for updates."
+            return
+        }
 
         $channel = if ($Channel) { $Channel.Trim().ToLower() } else { Get-UpdateChannel -Root $root }
         if (-not $channel) { $channel = 'stable' }
 
         $release = Get-ReleaseForChannel -Repo $repo -Channel $channel
-        if (-not $release) { throw "unable to find latest release for channel '$channel'." }
+        if (-not $release) { 
+            Write-Error "Unable to find latest release for channel '$channel'. Check your internet connection or try a different channel. Run 'chkupd' to see available updates."
+            return
+        }
 
         $tag = $release.tag_name
-        if (-not $tag) { throw 'release missing tag name.' }
+        if (-not $tag) { 
+            Write-Error "Release is missing tag name. This may be a corrupted release. Try again later or run 'chkupd' for status."
+            return
+        }
         $zipUrl = $release.zipball_url
-        if (-not $zipUrl) { throw 'release missing zipball_url.' }
+        if (-not $zipUrl) { 
+            Write-Error "Release is missing download URL. This may be a corrupted release. Try again later or run 'chkupd' for status."
+            return
+        }
 
         $localPath = Join-Path $root '.nexshell.sha'
         $local = $null
@@ -220,10 +244,14 @@ function upd {
         ($localKey.Trim() + "`r`n") | Set-Content -Path $localPath -Encoding UTF8 -Force
     }
     catch {
-        Write-Error -Message $_.Exception.Message -ErrorAction Continue
+        Write-Error -Message "Update failed: $($_.Exception.Message)" -ErrorAction Continue
         $msg = $_.Exception.Message
         if ($msg -match 'connect to the remote server|network|TLS|certificate') {
-            Write-Host 'hint: this needs internet access to github (and may require tls 1.2 / proxy settings on older systems)'
+            Write-Host 'Hint: This requires internet access to GitHub. Ensure TLS 1.2 is enabled and check proxy settings. Run "chkupd" to test connectivity.'
+        } elseif ($msg -match 'access denied|permission|unauthorized') {
+            Write-Host 'Hint: Permission denied. Ensure you have write access to the installation directory. Try running as administrator.'
+        } else {
+            Write-Host 'Hint: If you are stuck, run "chkupd" to check update status or "upd -Force" to force an update.'
         }
     }
     finally {
