@@ -469,7 +469,7 @@ function Install-NexShellTo {
 
 try { Clear-Host } catch { }
 
-Write-Header 'NexShell Installer'
+Write-Header 'nexshell installer.ps1 script'
 Write-Host 'welcome to the nexshell installer!'
 Write-Host 'please note:'
 Write-Host '- this will replace your existing powershell profile. any customizations will be lost.'
@@ -478,7 +478,7 @@ Write-Host 'press enter to continue, or ctrl+c to cancel.'
 [void](Read-Host)
 
 try { Clear-Host } catch { }
-Write-Header 'Disclaimer'
+Write-Header 'disclaimer'
 Write-Host '**you** are solely responsible for choosing to install, and this project is not provided with any warranty as it is sourced under the mit license.'
 Write-Host 'press enter to continue, or ctrl+c to cancel.'
 [void](Read-Host)
@@ -487,7 +487,7 @@ try { Clear-Host } catch { }
 
 function Read-UpdateChannel {
     param(
-        [string] $Prompt = 'Choose update channel (stable/beta/nightly) [stable]:'
+        [string] $Prompt = 'update channel (stable/beta/nightly) [stable]:'
     )
 
     while ($true) {
@@ -497,7 +497,7 @@ function Read-UpdateChannel {
         $val = $ans.Trim().ToLower()
         if ($val -in @('stable', 'beta', 'nightly')) { return $val }
 
-        Write-Host "Please enter 'stable', 'beta', or 'nightly'."
+        Write-Host "please enter either 'stable', 'beta', or 'nightly'"
     }
 }
 
@@ -506,13 +506,13 @@ $updateChannel = Read-UpdateChannel
 $repo = 'nexoude/nexshell'
 
 $profilePath = Get-ProfilePathForThisHost
-if (-not $profilePath) { throw 'Unable to determine $PROFILE for this host.' }
+if (-not $profilePath) { throw 'unable to determine $PROFILE for this host.' }
 
 $target = Split-Path -Parent $profilePath
-if (-not $target) { throw 'Unable to determine profile directory from $PROFILE.' }
+if (-not $target) { throw 'unable to determine profile directory from $PROFILE' }
 
 try { Clear-Host } catch { }
-Write-Header 'Preparing'
+Write-Header 'preparing'
 $needGit = $false
 $needPackage = $true
 
@@ -538,7 +538,7 @@ if ($needGit) {
 $pkg = $null
 if ($needPackage) {
     try { Clear-Host } catch { }
-Write-Header 'Downloading'
+Write-Header 'downloading'
     try {
         $pkg = Download-NexShellPackage -Repo $repo
     }
@@ -553,7 +553,7 @@ $sha = $null
 try { $sha = Get-LatestSha -Repo $repo } catch { $sha = $null }
 
 try { Clear-Host } catch { }
-Write-Header 'Installing'
+Write-Header 'installing'
 try {
     Write-Host ("target: {0}" -f $target)
     $pkgRoot = if ($pkg) { $pkg.PackageDir } else { $null }
