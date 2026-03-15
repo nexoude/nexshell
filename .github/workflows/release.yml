@@ -40,6 +40,7 @@ jobs:
             TAG="${GITHUB_REF#refs/heads/}"
             echo "channel=$TAG" >> $GITHUB_OUTPUT
           fi
+          echo "tag=$TAG" >> $GITHUB_OUTPUT
 
       - name: Generate release notes
         id: notes
@@ -63,7 +64,7 @@ jobs:
         run: |
           set -e
           CHANNEL="${{ steps.channel.outputs.channel }}"
-          TAG="${GITHUB_REF#refs/tags/}"
+          TAG="${{ steps.channel.outputs.tag }}"
           NAME="NexShell $TAG ($CHANNEL)"
           PRERELEASE="false"
           if [[ "$CHANNEL" != "stable" ]]; then
