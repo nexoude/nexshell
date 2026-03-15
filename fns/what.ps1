@@ -4,8 +4,7 @@ Do not edit unless you understand what it does.
 #>
 
 function what {
-    [CmdletBinding()]
-    param([string] $Topic)
+    param()
 
     function Write-HelpTable {
         param([Parameter(Mandatory = $true)][hashtable] $HelpMap)
@@ -83,12 +82,12 @@ function what {
         }
     }
 
-    if (-not $Topic) {
+    if (-not $args -or $args.Count -eq 0) {
         Write-HelpTable -HelpMap $help
         return
     }
 
-    $t = @($Topic) + @($args)
+    $t = $args
     $t = @($t | Where-Object { $_ -ne $null } | ForEach-Object { $_.ToString().Trim() } | Where-Object { $_.Length -gt 0 })
     if (-not $t -or $t.Count -eq 0) {
         Write-Host '`what` is a help tool for nexshell'
