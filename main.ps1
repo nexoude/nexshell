@@ -46,16 +46,18 @@ if (Test-Path -Path $fnsDir) {
     Remove-Variable fnsScripts, fnsScript -ErrorAction SilentlyContinue
 }
 
-function Get-AutoUpdate {
+$deprecatedCheckPath = Join-Path $profileRoot 'deprecated_check.ps1'
+if (Test-Path -Path $deprecatedCheckPath) {
+    try { . $deprecatedCheckPath } catch { }
+}
+
+function Get-UpdateChannel {
     param([Parameter(Mandatory = $true)][string] $Path)
 
-    $defaultValue = $true
+    $defaultValue = 'stable'
 
     try {
-        if (-not (Test-Path -Path $Path)) {
-            "auto_update = true`r`n" | Set-Content -Path $Path -Encoding UTF8 -Force
-            return $defaultValue
-        }
+        if (-not (Test-Path -Path $Path)) { return $defaultValue }
     }
     catch {
         return $defaultValue
@@ -72,44 +74,18 @@ function Get-AutoUpdate {
         if ($null -eq $line) { continue }
         $m = [Regex]::Match(
             $line,
-            '^\s*auto_update\s*=\s*(true|false)\s*(#.*)?$',
+            '^\s*update_channel\s*=\s*"(stable|beta|nightly)"\s*(#.*)?$',
             [System.Text.RegularExpressions.RegexOptions]::IgnoreCase
         )
         if ($m.Success) {
-            return ($m.Groups[1].Value.ToLower() -eq 'true')
+            return $m.Groups[1].Value.ToLower()
         }
     }
 
     return $defaultValue
 }
 
-$autoUpdate = Get-AutoUpdate -Path $configPath
-if ($autoUpdate) {
-    # Avoid noisy errors on startup when updates aren't configured yet.
-    $hasRepo = $false
-    try {
-        if ($env:NEXSHELL_REPO) { $hasRepo = $true }
-        elseif (Test-Path -Path $repoPath) { $hasRepo = $true }
-    }
-    catch {
-        $hasRepo = $false
-    }
+$updateChannel = Get-UpdateChannel -Path $configPath
+Set-Variable -Name updateChannel -Value $updateChannel -Scope Global -Force
 
-    if ($hasRepo) {
-        try {
-            if (Get-Command -Name 'upd' -ErrorAction SilentlyContinue) {
-                upd
-            }
-        }
-        catch {
-            # Do not block shell startup on updater errors.
-            Write-Warning ("auto-update failed: {0}" -f $_.Exception.Message)
-        }
-    }
-
-    Remove-Variable hasRepo -ErrorAction SilentlyContinue
-}
-
-Remove-Variable autoUpdate -ErrorAction SilentlyContinue
-Remove-Item -Path Function:Get-AutoUpdate -ErrorAction SilentlyContinue
 Remove-Variable profileRoot, fnsDir, configPath, repoPath -ErrorAction SilentlyContinue

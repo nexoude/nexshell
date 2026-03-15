@@ -50,52 +50,76 @@ function chkupd {
         return $r
     }
 
-    function Get-LatestSha {
-        param([Parameter(Mandatory = $true)][string] $Repo)
+    function Get-UpdateChannel {
+        param([Parameter(Mandatory = $true)][string] $Root)
+
+        $defaultValue = 'stable'
+        $cfg = Join-Path $Root 'config.toml'
+        try { if (-not (Test-Path -Path $cfg)) { return $defaultValue } } catch { return $defaultValue }
+
+        try {
+            $lines = Get-Content -Path $cfg -ErrorAction Stop
+        }
+        catch {
+            return $defaultValue
+        }
+
+        foreach ($line in @($lines)) {
+            if ($null -eq $line) { continue }
+            $m = [Regex]::Match(
+                $line,
+                '^\s*update_channel\s*=\s*"(stable|beta|nightly)"\s*(#.*)?$',
+                [System.Text.RegularExpressions.RegexOptions]::IgnoreCase
+            )
+            if ($m.Success) { return $m.Groups[1].Value.ToLower() }
+        }
+
+        return $defaultValue
+    }
+
+    function Get-ReleaseForChannel {
+        param(
+            [Parameter(Mandatory = $true)][string] $Repo,
+            [Parameter(Mandatory = $true)][string] $Channel
+        )
 
         if (-not (Get-Command -Name Invoke-RestMethod -ErrorAction SilentlyContinue) -and -not (Get-Command -Name Invoke-WebRequest -ErrorAction SilentlyContinue)) {
             throw 'chkupd requires powershell 3+ (invoke-restmethod/invoke-webrequest)'
         }
 
-        $uri = "https://api.github.com/repos/$Repo/commits/main"
-        $headers = @{ 'User-Agent' = 'NexShell' }
-
-        if (Get-Command -Name Invoke-RestMethod -ErrorAction SilentlyContinue) {
-            $resp = Invoke-RestMethod -Uri $uri -Headers $headers -Method Get -ErrorAction Stop
-            if ($resp -and $resp.sha) { return [string] $resp.sha }
-        }
-
-        $raw = Invoke-WebRequest -Uri $uri -Headers $headers -Method Get -ErrorAction Stop
-        if (-not $raw -or -not $raw.Content) { return $null }
-        if (-not (Get-Command -Name ConvertFrom-Json -ErrorAction SilentlyContinue)) { return $null }
-        $obj = $raw.Content | ConvertFrom-Json
-        if ($obj -and $obj.sha) { return [string] $obj.sha }
-        return $null
-    }
-
-    function Get-CompareInfo {
-        param(
-            [Parameter(Mandatory = $true)][string] $Repo,
-            [Parameter(Mandatory = $true)][string] $BaseSha,
-            [Parameter(Mandatory = $true)][string] $HeadSha
-        )
-
-        $uri = "https://api.github.com/repos/$Repo/compare/$BaseSha...$HeadSha"
+        $uri = "https://api.github.com/repos/$Repo/releases"
         $headers = @{ 'User-Agent' = 'NexShell' }
 
         try {
             if (Get-Command -Name Invoke-RestMethod -ErrorAction SilentlyContinue) {
-                return Invoke-RestMethod -Uri $uri -Headers $headers -Method Get -ErrorAction Stop
+                $releases = Invoke-RestMethod -Uri $uri -Headers $headers -Method Get -ErrorAction Stop
             }
-
-            $raw = Invoke-WebRequest -Uri $uri -Headers $headers -Method Get -ErrorAction Stop
-            if (-not $raw -or -not $raw.Content) { return $null }
-            if (-not (Get-Command -Name ConvertFrom-Json -ErrorAction SilentlyContinue)) { return $null }
-            return $raw.Content | ConvertFrom-Json
+            else {
+                $raw = Invoke-WebRequest -Uri $uri -Headers $headers -Method Get -ErrorAction Stop
+                if (-not $raw -or -not $raw.Content) { return $null }
+                if (-not (Get-Command -Name ConvertFrom-Json -ErrorAction SilentlyContinue)) { return $null }
+                $releases = $raw.Content | ConvertFrom-Json
+            }
         }
         catch {
             return $null
         }
+
+        if (-not $releases) { return $null }
+
+        $channel = $Channel.ToLower().Trim()
+        if (-not $channel) { $channel = 'stable' }
+
+        if ($channel -eq 'stable') {
+            return $releases | Where-Object { -not $_.prerelease } | Select-Object -First 1
+        }
+
+        $match = $releases | Where-Object { $_.prerelease } | Where-Object {
+            ($_.tag_name -match $channel) -or ($_.name -match $channel)
+        } | Select-Object -First 1
+        if ($match) { return $match }
+
+        return $releases | Where-Object { $_.prerelease } | Select-Object -First 1
     }
 
     try {
@@ -107,8 +131,12 @@ function chkupd {
         $repo = Get-Repo -Root $root
         if (-not $repo) { throw "repo is not configured. set `$env:nexshell_repo or create '$($root)\\.nexshell_repo' with 'owner/repo'" }
 
-        $latest = Get-LatestSha -Repo $repo
-        if (-not $latest) { throw 'unable to check latest version (network/api failure)' }
+        $channel = Get-UpdateChannel -Root $root
+        $release = Get-ReleaseForChannel -Repo $repo -Channel $channel
+        if (-not $release) { throw "unable to check latest version (network/api failure) for channel '$channel'" }
+
+        $tag = $release.tag_name
+        if (-not $tag) { throw 'release missing tag name' }
 
         $localPath = Join-Path $root '.nexshell.sha'
         $local = $null
@@ -117,43 +145,30 @@ function chkupd {
         }
         if ($local) { $local = $local.Trim() }
 
+        $localKey = "${channel}:${tag}"
+
         if (-not $local) {
             Write-InfoTable -Rows @{
                 Installed = 'unknown'
-                Latest    = $latest.Substring(0, 12)
+                Latest    = $localKey
                 Status    = 'unknown (no local .nexshell.sha)'
             }
             return
         }
 
-        if ($local -eq $latest) {
+        if ($local -eq $localKey) {
             Write-InfoTable -Rows @{
-                Installed = $local.Substring(0, 12)
-                Latest    = $latest.Substring(0, 12)
+                Installed = $local
+                Latest    = $localKey
                 Status    = 'up to date'
             }
         }
         else {
-            $status = 'update available'
-            $detail = $null
-
-            $cmp = Get-CompareInfo -Repo $repo -BaseSha $local -HeadSha $latest
-            if ($cmp -and $cmp.status) {
-                switch ($cmp.status) {
-                    'behind' { $status = 'update available'; $detail = "remote is $($cmp.behind_by) commits ahead" }
-                    'ahead'  { $status = 'local ahead'; $detail = "remote is $($cmp.behind_by) commits behind" }
-                    'diverged' { $status = 'diverged'; $detail = "ahead by $($cmp.ahead_by), behind by $($cmp.behind_by)" }
-                    default { $status = 'update available' }
-                }
+            Write-InfoTable -Rows @{
+                Installed = $local
+                Latest    = $localKey
+                Status    = 'update available'
             }
-
-            $rows = @{
-                Installed = $local.Substring(0, 12)
-                Latest    = $latest.Substring(0, 12)
-                Status    = $status
-            }
-            if ($detail) { $rows['Detail'] = $detail }
-            Write-InfoTable -Rows $rows
         }
     }
     catch {

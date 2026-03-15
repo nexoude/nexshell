@@ -361,7 +361,7 @@ function Install-NexShellTo {
     param(
         [string] $PackageRoot,
         [Parameter(Mandatory = $true)][string] $TargetDir,
-        [Parameter(Mandatory = $true)][bool] $AutoUpdate,
+        [Parameter(Mandatory = $true)][string] $UpdateChannel,
         [Parameter(Mandatory = $true)][string] $Repo,
         [string] $Sha
     )
@@ -444,9 +444,9 @@ function Install-NexShellTo {
         }
     }
 
-    $cfg = if ($AutoUpdate) { 'true' } else { 'false' }
+    $channel = if ($UpdateChannel) { $UpdateChannel.Trim() } else { 'stable' }
     try {
-        ("auto_update = {0}`r`n" -f $cfg) | Set-Content -Path (Join-Path $TargetDir 'config.toml') -Encoding UTF8 -Force
+        ("update_channel = \"{0}\"`r`n" -f $channel) | Set-Content -Path (Join-Path $TargetDir 'config.toml') -Encoding UTF8 -Force
     }
     catch {
         throw ("failed writing config.toml: {0}" -f $_.Exception.Message)
@@ -484,7 +484,24 @@ Write-Host 'press enter to continue, or ctrl+c to cancel.'
 [void](Read-Host)
 
 try { Clear-Host } catch { }
-$autoUpdate = Read-YesNo -Prompt "would you like to enable auto update? please note this adds overhead for powershell loading as it will have to check for updates before letting you use it. this will not prompt you upon finding an update and find it automatically. saying no will let you update and check for updates via 'upd' and 'chkupd'. (y/n)"
+
+function Read-UpdateChannel {
+    param(
+        [string] $Prompt = 'Choose update channel (stable/beta/nightly) [stable]:'
+    )
+
+    while ($true) {
+        $ans = Read-Host $Prompt
+        if ($null -eq $ans -or $ans.Trim() -eq '') { return 'stable' }
+
+        $val = $ans.Trim().ToLower()
+        if ($val -in @('stable', 'beta', 'nightly')) { return $val }
+
+        Write-Host "Please enter 'stable', 'beta', or 'nightly'."
+    }
+}
+
+$updateChannel = Read-UpdateChannel
 
 $repo = 'nexoude/nexshell'
 
@@ -540,7 +557,7 @@ Write-Header 'Installing'
 try {
     Write-Host ("target: {0}" -f $target)
     $pkgRoot = if ($pkg) { $pkg.PackageDir } else { $null }
-    Install-NexShellTo -PackageRoot $pkgRoot -TargetDir $target -AutoUpdate $autoUpdate -Repo $repo -Sha $sha
+    Install-NexShellTo -PackageRoot $pkgRoot -TargetDir $target -UpdateChannel $updateChannel -Repo $repo -Sha $sha
 }
 finally {
     try {

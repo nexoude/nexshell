@@ -6,7 +6,8 @@ Do not edit unless you understand what it does.
 function upd {
     [CmdletBinding()]
     param(
-        [switch] $Force
+        [switch] $Force,
+        [string] $Channel
     )
 
     $ErrorActionPreference = 'Stop'
@@ -35,54 +36,78 @@ function upd {
         return $r
     }
 
-    function Get-LatestSha {
-        param([Parameter(Mandatory = $true)][string] $Repo)
+    function Get-UpdateChannel {
+        param([Parameter(Mandatory = $true)][string] $Root)
+
+        $defaultValue = 'stable'
+        $cfg = Join-Path $Root 'config.toml'
+        try { if (-not (Test-Path -Path $cfg)) { return $defaultValue } } catch { return $defaultValue }
+
+        try {
+            $lines = Get-Content -Path $cfg -ErrorAction Stop
+        }
+        catch {
+            return $defaultValue
+        }
+
+        foreach ($line in @($lines)) {
+            if ($null -eq $line) { continue }
+            $m = [Regex]::Match(
+                $line,
+                '^\s*update_channel\s*=\s*"(stable|beta|nightly)"\s*(#.*)?$',
+                [System.Text.RegularExpressions.RegexOptions]::IgnoreCase
+            )
+            if ($m.Success) {
+                return $m.Groups[1].Value.ToLower()
+            }
+        }
+
+        return $defaultValue
+    }
+
+    function Get-ReleaseForChannel {
+        param(
+            [Parameter(Mandatory = $true)][string] $Repo,
+            [Parameter(Mandatory = $true)][string] $Channel
+        )
 
         if (-not (Get-Command -Name Invoke-RestMethod -ErrorAction SilentlyContinue) -and -not (Get-Command -Name Invoke-WebRequest -ErrorAction SilentlyContinue)) {
             throw 'upd requires PowerShell 3+ (Invoke-RestMethod/Invoke-WebRequest)'
         }
 
-        $uri = "https://api.github.com/repos/$Repo/commits/main"
-        $headers = @{ 'User-Agent' = 'NexShell' }
-
-        if (Get-Command -Name Invoke-RestMethod -ErrorAction SilentlyContinue) {
-            $resp = Invoke-RestMethod -Uri $uri -Headers $headers -Method Get -ErrorAction Stop
-            if ($resp -and $resp.sha) { return [string] $resp.sha }
-        }
-
-        $raw = Invoke-WebRequest -Uri $uri -Headers $headers -Method Get -ErrorAction Stop
-        if (-not $raw -or -not $raw.Content) { return $null }
-        if (-not (Get-Command -Name ConvertFrom-Json -ErrorAction SilentlyContinue)) { return $null }
-        $obj = $raw.Content | ConvertFrom-Json
-        if ($obj -and $obj.sha) { return [string] $obj.sha }
-        return $null
-    }
-
-    function Get-CompareInfo {
-        param(
-            [Parameter(Mandatory = $true)][string] $Repo,
-            [Parameter(Mandatory = $true)][string] $BaseSha,
-            [Parameter(Mandatory = $true)][string] $HeadSha
-        )
-
-        # Compare commits to determine if local is ahead/behind/diverged.
-        # We use the GitHub compare API: /repos/{owner}/{repo}/compare/{base}...{head}
-        $uri = "https://api.github.com/repos/$Repo/compare/$BaseSha...$HeadSha"
+        $uri = "https://api.github.com/repos/$Repo/releases"
         $headers = @{ 'User-Agent' = 'NexShell' }
 
         try {
             if (Get-Command -Name Invoke-RestMethod -ErrorAction SilentlyContinue) {
-                return Invoke-RestMethod -Uri $uri -Headers $headers -Method Get -ErrorAction Stop
+                $releases = Invoke-RestMethod -Uri $uri -Headers $headers -Method Get -ErrorAction Stop
             }
-
-            $raw = Invoke-WebRequest -Uri $uri -Headers $headers -Method Get -ErrorAction Stop
-            if (-not $raw -or -not $raw.Content) { return $null }
-            if (-not (Get-Command -Name ConvertFrom-Json -ErrorAction SilentlyContinue)) { return $null }
-            return $raw.Content | ConvertFrom-Json
+            else {
+                $raw = Invoke-WebRequest -Uri $uri -Headers $headers -Method Get -ErrorAction Stop
+                if (-not $raw -or -not $raw.Content) { return $null }
+                if (-not (Get-Command -Name ConvertFrom-Json -ErrorAction SilentlyContinue)) { return $null }
+                $releases = $raw.Content | ConvertFrom-Json
+            }
         }
         catch {
             return $null
         }
+
+        if (-not $releases) { return $null }
+
+        $channel = $Channel.ToLower().Trim()
+        if (-not $channel) { $channel = 'stable' }
+
+        if ($channel -eq 'stable') {
+            return $releases | Where-Object { -not $_.prerelease } | Select-Object -First 1
+        }
+
+        $match = $releases | Where-Object { $_.prerelease } | Where-Object {
+            ($_.tag_name -match $channel) -or ($_.name -match $channel)
+        } | Select-Object -First 1
+        if ($match) { return $match }
+
+        return $releases | Where-Object { $_.prerelease } | Select-Object -First 1
     }
 
     function Expand-ZipTo {
@@ -126,8 +151,16 @@ function upd {
         $repo = Get-Repo -Root $root
         if (-not $repo) { throw "unable to find repo configuration. Set `$env:NEXSHELL_REPO or create '$($root)\\.nexshell_repo' with 'owner/repo'." }
 
-        $latest = Get-LatestSha -Repo $repo
-        if (-not $latest) { throw 'unable to check latest version (network/API failure).' }
+        $channel = if ($Channel) { $Channel.Trim().ToLower() } else { Get-UpdateChannel -Root $root }
+        if (-not $channel) { $channel = 'stable' }
+
+        $release = Get-ReleaseForChannel -Repo $repo -Channel $channel
+        if (-not $release) { throw "unable to find latest release for channel '$channel'." }
+
+        $tag = $release.tag_name
+        if (-not $tag) { throw 'release missing tag name.' }
+        $zipUrl = $release.zipball_url
+        if (-not $zipUrl) { throw 'release missing zipball_url.' }
 
         $localPath = Join-Path $root '.nexshell.sha'
         $local = $null
@@ -136,23 +169,9 @@ function upd {
         }
         if ($local) { $local = $local.Trim() }
 
-        if ($local -and ($local -eq $latest)) {
+        $localKey = "${channel}:${tag}"
+        if ($local -and ($local -eq $localKey) -and (-not $Force)) {
             return
-        }
-
-        if ($local) {
-            $cmp = Get-CompareInfo -Repo $repo -BaseSha $local -HeadSha $latest
-            if ($cmp -and $cmp.status) {
-                if ($cmp.status -in @('ahead', 'diverged')) {
-                    if (-not $Force) {
-                        $localShort = $local.Substring(0, 12)
-                        $latestShort = $latest.Substring(0, 12)
-                        Write-Host "local version ($localShort) is ahead or diverged from remote ($latestShort); update would overwrite local changes."
-                        Write-Host "Rerun with -Force to proceed (downgrade may occur)."
-                        return
-                    }
-                }
-            }
         }
 
         $tmp = Join-Path ([IO.Path]::GetTempPath()) ('NexShell-' + [Guid]::NewGuid().ToString('N'))
@@ -160,9 +179,7 @@ function upd {
         $extract = Join-Path $tmp 'extract'
         New-Item -ItemType Directory -Path $extract -Force | Out-Null
 
-        $zipUrl = "https://github.com/$repo/archive/refs/heads/main.zip"
         $headers = @{ 'User-Agent' = 'NexShell' }
-
         try {
             Invoke-WebRequest -Uri $zipUrl -Headers $headers -OutFile $zip -UseBasicParsing -ErrorAction Stop | Out-Null
         }
@@ -200,7 +217,7 @@ function upd {
         }
         Copy-Item -Path $newFns -Destination (Join-Path $root 'fns') -Recurse -Force
 
-        ($latest.Trim() + "`r`n") | Set-Content -Path $localPath -Encoding UTF8 -Force
+        ($localKey.Trim() + "`r`n") | Set-Content -Path $localPath -Encoding UTF8 -Force
     }
     catch {
         Write-Error -Message $_.Exception.Message -ErrorAction Continue
