@@ -213,7 +213,7 @@ function Ensure-ScoopInstalled {
     Add-ToPathIfMissing -Dir (Join-Path $env:USERPROFILE 'scoop\shims')
 
     if (-not (Get-ScoopCommandPath)) {
-        throw "scoop install ran, but the 'scoop' command still isn't available. you're fucking stupid. fix scoop, then rerun this installer"
+        throw "Scoop installation completed, but the 'scoop' command is not available. Please ensure Scoop is properly configured and try again."
     }
 }
 
@@ -221,27 +221,27 @@ function Ensure-GitInstalled {
     if (Get-Command -Name 'git' -ErrorAction SilentlyContinue) { return }
 
     Write-Header 'Git is missing'
-    Write-Host "git isn't installed. you're fucking stupid. you should install git first"
-    Write-Host 'trying to install git using scoop anyway...'
+    Write-Host "Git is not installed. Please install Git first."
+    Write-Host 'Attempting to install Git using Scoop...'
 
     try {
         Ensure-ScoopInstalled
     }
     catch {
-        throw ("git isn't installed and scoop couldn't be installed. {0}`nyou're fucking stupid. install git first, then rerun this installer." -f $_.Exception.Message)
+        throw ("Git is not installed and Scoop could not be installed. {0}`nPlease install Git first and rerun this installer." -f $_.Exception.Message)
     }
 
     $scoop = Get-ScoopCommandPath
     if (-not $scoop) {
-        throw "scoop seems installed but the 'scoop' command isn't available. you're fucking stupid. fix scoop/git and rerun"
+        throw "Scoop appears to be installed, but the 'scoop' command is not available. Please ensure Scoop is properly configured and try again."
     }
 
     try {
         & $scoop install git | Out-Null
-        if ($LASTEXITCODE -ne 0) { throw ("scoop install git failed (exit code {0})" -f $LASTEXITCODE) }
+        if ($LASTEXITCODE -ne 0) { throw ("Scoop install git failed (exit code {0})" -f $LASTEXITCODE) }
     }
     catch {
-        throw ("failed to install git via scoop: {0}`nyou're fucking stupid. install git manually and rerun." -f $_.Exception.Message)
+        throw ("Failed to install Git via Scoop: {0}`nPlease install Git manually and rerun this installer." -f $_.Exception.Message)
     }
 
     if ($env:USERPROFILE) {
@@ -249,7 +249,7 @@ function Ensure-GitInstalled {
     }
 
     if (-not (Get-Command -Name 'git' -ErrorAction SilentlyContinue)) {
-        throw "git still isn't available after install. you're fucking stupid. restart powershell and rerun the installer"
+        throw "Git is still not available after installation. Please restart PowerShell and rerun the installer."
     }
 }
 
@@ -465,11 +465,16 @@ function Install-NexShellTo {
 try { Clear-Host } catch { }
 
 Write-Header 'NexShell Installer'
-Write-Host '1) it will delete any previous data in your profile, no matter what'
-Write-Host '2) if something breaks completely at some point, try reinstalling everything with this script'
+Write-Host 'Welcome to the NexShell installer!'
+Write-Host 'Please note:'
+Write-Host '- This will replace your existing PowerShell profile. Any customizations will be lost.'
+Write-Host '- If issues arise, you can reinstall using this script.'
 Write-Host ''
-Write-Host 'press enter to continue, or ctrl+c to cancel'
+Write-Host 'Press Enter to continue, or Ctrl+C to cancel.'
 [void](Read-Host)
+
+Write-Header 'Another small thing before we start installing:'
+Write-Host '**YOU** are solely responsible for choosing to install, and this project is NOT provided with ANY warranty as it is sourced under the MIT license.'
 
 $autoUpdate = Read-YesNo -Prompt "Would you like to enable auto update? Please note this adds overhead for PowerShell loading as it will have to check for updates before letting you use it. This will not prompt you upon finding an update and find it automatically. Saying no will let you update and check for updates via 'upd' and 'chkupd'. (y/n)"
 
