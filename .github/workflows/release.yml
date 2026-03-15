@@ -2,6 +2,9 @@ name: Release
 
 on:
   push:
+    branches:
+      - beta
+      - nightly
     tags:
       - 'v*'
   workflow_dispatch:
@@ -24,13 +27,18 @@ jobs:
       - name: Determine release channel
         id: channel
         run: |
-          TAG="${GITHUB_REF#refs/tags/}"
-          if [[ "$TAG" == *beta* ]]; then
-            echo "channel=beta" >> $GITHUB_OUTPUT
-          elif [[ "$TAG" == *nightly* ]]; then
-            echo "channel=nightly" >> $GITHUB_OUTPUT
+          if [[ "${GITHUB_REF}" == refs/tags/* ]]; then
+            TAG="${GITHUB_REF#refs/tags/}"
+            if [[ "$TAG" == *beta* ]]; then
+              echo "channel=beta" >> $GITHUB_OUTPUT
+            elif [[ "$TAG" == *nightly* ]]; then
+              echo "channel=nightly" >> $GITHUB_OUTPUT
+            else
+              echo "channel=stable" >> $GITHUB_OUTPUT
+            fi
           else
-            echo "channel=stable" >> $GITHUB_OUTPUT
+            TAG="${GITHUB_REF#refs/heads/}"
+            echo "channel=$TAG" >> $GITHUB_OUTPUT
           fi
 
       - name: Generate release notes
